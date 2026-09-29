@@ -1,0 +1,36 @@
+{
+  "calculate_sum": {
+    "file": "app.py",
+    "line_start": 4,
+    "line_end": 11,
+    "params": [
+      {
+        "name": "numbers",
+        "type": "unknown"
+      }
+    ],
+    "returns": "unknown",
+    "body_hash": "13111f43a3cff634",
+    "calls": [],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "greet": {
+    "file": "app.py",
+    "line_start": 14,
+    "line_end": 15,
+    "params": [
+      {
+        "name": "name",
+        "type": "unknown"
+      }
+    ],
+    "returns": "unknown",
+    "body_hash": "8e4844e689f70ca1",
+    "calls": [
+      "print"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  }
+}

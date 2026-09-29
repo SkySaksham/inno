@@ -1,0 +1,44 @@
+{
+  "indexed_sha": "unknown",
+  "files": {
+    "app.py": {
+      "blob_hash": "f4a76d0fbbb08321b34db334b0840f2b2064a708",
+      "functions": [
+        "calculate_sum",
+        "greet"
+      ]
+    },
+    "extract_metadata.py": {
+      "blob_hash": "8d0b38bf02d2a160f3fe17aa507e3c79d7112de1",
+      "functions": [
+        "git_blob_hash",
+        "body_hash",
+        "annotation_to_str",
+        "extract_functions_from_file",
+        "call_llm",
+        "infer_missing_metadata",
+        "needs_llm",
+        "load_existing_functions",
+        "shard_name_for",
+        "build_call_graph",
+        "main",
+        "summary_for"
+      ]
+    },
+    "scanner.py": {
+      "blob_hash": "d7b3c7b6bd8e200c1f835e49d4ab672202832f6b",
+      "functions": [
+        "run_pylint"
+      ]
+    },
+    "test_app.py": {
+      "blob_hash": "e304048ca5724edaa665cca9f35998796c858f7f",
+      "functions": [
+        "add_numbers",
+        "calculate_total",
+        "greet_user",
+        "main"
+      ]
+    }
+  }
+}

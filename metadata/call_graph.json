@@ -1,0 +1,91 @@
+{
+  "calculate_sum": {
+    "calls": [],
+    "called_by": []
+  },
+  "greet": {
+    "calls": [],
+    "called_by": []
+  },
+  "git_blob_hash": {
+    "calls": [],
+    "called_by": []
+  },
+  "body_hash": {
+    "calls": [],
+    "called_by": [
+      "extract_functions_from_file"
+    ]
+  },
+  "annotation_to_str": {
+    "calls": [],
+    "called_by": [
+      "extract_functions_from_file"
+    ]
+  },
+  "extract_functions_from_file": {
+    "calls": [
+      "annotation_to_str",
+      "body_hash"
+    ],
+    "called_by": []
+  },
+  "call_llm": {
+    "calls": [],
+    "called_by": []
+  },
+  "infer_missing_metadata": {
+    "calls": [],
+    "called_by": []
+  },
+  "needs_llm": {
+    "calls": [],
+    "called_by": []
+  },
+  "load_existing_functions": {
+    "calls": [],
+    "called_by": []
+  },
+  "shard_name_for": {
+    "calls": [],
+    "called_by": []
+  },
+  "build_call_graph": {
+    "calls": [],
+    "called_by": []
+  },
+  "main": {
+    "calls": [
+      "add_numbers",
+      "calculate_total",
+      "greet_user"
+    ],
+    "called_by": []
+  },
+  "summary_for": {
+    "calls": [],
+    "called_by": []
+  },
+  "run_pylint": {
+    "calls": [],
+    "called_by": []
+  },
+  "add_numbers": {
+    "calls": [],
+    "called_by": [
+      "main"
+    ]
+  },
+  "calculate_total": {
+    "calls": [],
+    "called_by": [
+      "main"
+    ]
+  },
+  "greet_user": {
+    "calls": [],
+    "called_by": [
+      "main"
+    ]
+  }
+}

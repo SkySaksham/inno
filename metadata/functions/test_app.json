@@ -1,0 +1,72 @@
+{
+  "main": {
+    "file": "test_app.py",
+    "line_start": 19,
+    "line_end": 27,
+    "params": [],
+    "returns": "unknown",
+    "body_hash": "56186e1a614322ba",
+    "calls": [
+      "add_numbers",
+      "calculate_total",
+      "greet_user",
+      "print"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "add_numbers": {
+    "file": "test_app.py",
+    "line_start": 1,
+    "line_end": 2,
+    "params": [
+      {
+        "name": "a",
+        "type": "int"
+      },
+      {
+        "name": "b",
+        "type": "int"
+      }
+    ],
+    "returns": "int",
+    "body_hash": "816a271750869895",
+    "calls": [],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "calculate_total": {
+    "file": "test_app.py",
+    "line_start": 5,
+    "line_end": 11,
+    "params": [
+      {
+        "name": "numbers",
+        "type": "unknown"
+      }
+    ],
+    "returns": "unknown",
+    "body_hash": "262c78442f834ff0",
+    "calls": [],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "greet_user": {
+    "file": "test_app.py",
+    "line_start": 14,
+    "line_end": 16,
+    "params": [
+      {
+        "name": "name",
+        "type": "unknown"
+      }
+    ],
+    "returns": "unknown",
+    "body_hash": "4c63c67a9a0004f4",
+    "calls": [
+      "print"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  }
+}
