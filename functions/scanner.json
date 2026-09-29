@@ -1,0 +1,21 @@
+{
+  "run_pylint": {
+    "file": "scanner.py",
+    "line_start": 4,
+    "line_end": 19,
+    "params": [
+      {
+        "name": "filename",
+        "type": "unknown"
+      }
+    ],
+    "returns": "unknown",
+    "body_hash": "7ef8617c83d4fb3a",
+    "calls": [
+      "print",
+      "run"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  }
+}

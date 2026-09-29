@@ -1,0 +1,290 @@
+{
+  "main": {
+    "file": "extract_metadata.py",
+    "line_start": 225,
+    "line_end": 319,
+    "params": [],
+    "returns": "unknown",
+    "body_hash": "05d42e3685dc20bd",
+    "calls": [
+      "ArgumentParser",
+      "Path",
+      "add_argument",
+      "append",
+      "build_call_graph",
+      "dump",
+      "enumerate",
+      "exists",
+      "extract_functions_from_file",
+      "get",
+      "git_blob_hash",
+      "infer_missing_metadata",
+      "items",
+      "keys",
+      "len",
+      "list",
+      "load_existing_functions",
+      "mkdir",
+      "needs_llm",
+      "open",
+      "parse_args",
+      "print",
+      "read",
+      "relative_to",
+      "rglob",
+      "run",
+      "setdefault",
+      "shard_name_for",
+      "str",
+      "strip",
+      "sum",
+      "summary_for",
+      "update"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "git_blob_hash": {
+    "file": "extract_metadata.py",
+    "line_start": 35,
+    "line_end": 45,
+    "params": [
+      {
+        "name": "filepath",
+        "type": "str"
+      }
+    ],
+    "returns": "str",
+    "body_hash": "f05f82aeaba2ff99",
+    "calls": [
+      "hexdigest",
+      "open",
+      "read",
+      "run",
+      "sha256",
+      "strip"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "body_hash": {
+    "file": "extract_metadata.py",
+    "line_start": 48,
+    "line_end": 50,
+    "params": [
+      {
+        "name": "source_segment",
+        "type": "str"
+      }
+    ],
+    "returns": "str",
+    "body_hash": "82139d1cc1e7ac6c",
+    "calls": [
+      "encode",
+      "hexdigest",
+      "sha256"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "annotation_to_str": {
+    "file": "extract_metadata.py",
+    "line_start": 54,
+    "line_end": 60,
+    "params": [
+      {
+        "name": "node",
+        "type": "unknown"
+      }
+    ],
+    "returns": "str | None",
+    "body_hash": "2c140bd2bb4f656d",
+    "calls": [
+      "unparse"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "extract_functions_from_file": {
+    "file": "extract_metadata.py",
+    "line_start": 63,
+    "line_end": 109,
+    "params": [
+      {
+        "name": "filepath",
+        "type": "str"
+      },
+      {
+        "name": "source",
+        "type": "str"
+      }
+    ],
+    "returns": "dict",
+    "body_hash": "e3e1363f981cc408",
+    "calls": [
+      "annotation_to_str",
+      "append",
+      "body_hash",
+      "get_source_segment",
+      "getattr",
+      "isinstance",
+      "parse",
+      "set",
+      "sorted",
+      "walk"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "call_llm": {
+    "file": "extract_metadata.py",
+    "line_start": 157,
+    "line_end": 159,
+    "params": [
+      {
+        "name": "prompt",
+        "type": "str"
+      }
+    ],
+    "returns": "str",
+    "body_hash": "78cd3c7dbcaf7702",
+    "calls": [
+      "print"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "infer_missing_metadata": {
+    "file": "extract_metadata.py",
+    "line_start": 162,
+    "line_end": 179,
+    "params": [
+      {
+        "name": "func_name",
+        "type": "str"
+      },
+      {
+        "name": "func_data",
+        "type": "dict"
+      },
+      {
+        "name": "callee_summaries",
+        "type": "dict"
+      },
+      {
+        "name": "caller_summaries",
+        "type": "dict"
+      }
+    ],
+    "returns": "dict",
+    "body_hash": "76424a65241ba878",
+    "calls": [
+      "print"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "needs_llm": {
+    "file": "extract_metadata.py",
+    "line_start": 182,
+    "line_end": 190,
+    "params": [
+      {
+        "name": "func_data",
+        "type": "dict"
+      },
+      {
+        "name": "cached_entry",
+        "type": "dict | None"
+      }
+    ],
+    "returns": "bool",
+    "body_hash": "a54ac96246d7fe8a",
+    "calls": [
+      "any",
+      "get"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "load_existing_functions": {
+    "file": "extract_metadata.py",
+    "line_start": 194,
+    "line_end": 205,
+    "params": [
+      {
+        "name": "out_dir",
+        "type": "Path"
+      }
+    ],
+    "returns": "dict",
+    "body_hash": "d7b82fbda58efc78",
+    "calls": [
+      "exists",
+      "glob",
+      "load",
+      "open",
+      "update"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "shard_name_for": {
+    "file": "extract_metadata.py",
+    "line_start": 208,
+    "line_end": 209,
+    "params": [
+      {
+        "name": "filepath",
+        "type": "str"
+      }
+    ],
+    "returns": "str",
+    "body_hash": "d16f6f1a2adfdfc9",
+    "calls": [
+      "replace"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "build_call_graph": {
+    "file": "extract_metadata.py",
+    "line_start": 212,
+    "line_end": 222,
+    "params": [
+      {
+        "name": "all_functions",
+        "type": "dict"
+      }
+    ],
+    "returns": "dict",
+    "body_hash": "009a3d0e7227caf8",
+    "calls": [
+      "append",
+      "items",
+      "set",
+      "sorted",
+      "values"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "summary_for": {
+    "file": "extract_metadata.py",
+    "line_start": 266,
+    "line_end": 268,
+    "params": [
+      {
+        "name": "name",
+        "type": "unknown"
+      }
+    ],
+    "returns": "unknown",
+    "body_hash": "8628edbe5fe33de3",
+    "calls": [
+      "get"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  }
+}
