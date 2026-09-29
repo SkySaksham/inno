@@ -1,0 +1,38 @@
+# Generated repo-metadata output — this lives on metadata-branch only,
+# never on main. If it's already tracked on main, remove it first with:
+#   git rm -r --cached metadata/
+metadata/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment variables / secrets
+.env
+.env.local
+*.key
+
+# Linter / tool output
+.pylint.d/
+.eslintcache
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

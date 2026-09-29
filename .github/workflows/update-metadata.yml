@@ -24,10 +24,30 @@ jobs:
         with:
           fetch-depth: 0   # full history needed for `git diff` against an older sha
 
+      # Checks metadata-branch out into its OWN folder (./metadata), as a
+      # separate git repo — this avoids the worktree/nested-repo bug where
+      # git commands accidentally run against the main checkout instead.
       - name: Checkout metadata branch into ./metadata
+        id: meta_checkout
+        uses: actions/checkout@v4
+        continue-on-error: true   # fails gracefully if metadata-branch doesn't exist yet
+        with:
+          ref: metadata-branch
+          path: metadata
+
+      - name: Bootstrap metadata branch if it doesn't exist yet
+        if: steps.meta_checkout.outcome == 'failure'
         run: |
-          git fetch origin metadata-branch:metadata-branch || echo "No metadata branch yet"
-          git worktree add ./metadata metadata-branch || mkdir -p ./metadata
+          rm -rf ./metadata
+          mkdir -p ./metadata
+          cd ./metadata
+          git init
+          git checkout -b metadata-branch
+          git config user.name "metadata-bot"
+          git config user.email "metadata-bot@users.noreply.github.com"
+          git commit --allow-empty -m "init metadata branch"
+          git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git push origin metadata-branch
 
       - name: Determine last indexed commit
         id: last_indexed
@@ -46,12 +66,11 @@ jobs:
             echo "mode=full" >> "$GITHUB_OUTPUT"
             echo "files=" >> "$GITHUB_OUTPUT"
           elif git cat-file -e "${{ steps.last_indexed.outputs.last_sha }}" 2>/dev/null; then
-            # last_sha exists and is a real commit — diff incrementally
             FILES=$(git diff --name-only "${{ steps.last_indexed.outputs.last_sha }}" HEAD -- '*.py' | tr '\n' ' ')
             echo "mode=incremental" >> "$GITHUB_OUTPUT"
             echo "files=$FILES" >> "$GITHUB_OUTPUT"
           else
-            # last_sha is stale/unreachable (force-push, history rewrite) — full rebuild
+            # last_sha unreachable (force-push, history rewrite) — full rebuild
             echo "mode=full" >> "$GITHUB_OUTPUT"
             echo "files=" >> "$GITHUB_OUTPUT"
           fi
@@ -77,8 +96,8 @@ jobs:
 
       - name: Commit and push metadata
         if: steps.changed.outputs.files != '' || steps.changed.outputs.mode == 'full'
+        working-directory: ./metadata
         run: |
-          cd ./metadata
           git config user.name "metadata-bot"
           git config user.email "metadata-bot@users.noreply.github.com"
           git add .
