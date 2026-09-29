@@ -1,0 +1,86 @@
+name: Update Repo Metadata
+
+# Runs after every merge into main. Using push (not pull_request) so this
+# only fires on the actual merge commit, not on every push to a PR branch.
+on:
+  push:
+    branches: [main]
+
+# Prevents two merges landing close together from racing each other on the
+# metadata branch.
+concurrency:
+  group: metadata-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # needed to push to the metadata branch
+
+jobs:
+  update-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history needed for `git diff` against an older sha
+
+      - name: Checkout metadata branch into ./metadata
+        run: |
+          git fetch origin metadata-branch:metadata-branch || echo "No metadata branch yet"
+          git worktree add ./metadata metadata-branch || mkdir -p ./metadata
+
+      - name: Determine last indexed commit
+        id: last_indexed
+        run: |
+          if [ -f ./metadata/index.json ]; then
+            LAST_SHA=$(jq -r '.indexed_sha' ./metadata/index.json)
+          else
+            LAST_SHA=""
+          fi
+          echo "last_sha=$LAST_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Get changed Python files since last index
+        id: changed
+        run: |
+          if [ -z "${{ steps.last_indexed.outputs.last_sha }}" ]; then
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "files=" >> "$GITHUB_OUTPUT"
+          elif git cat-file -e "${{ steps.last_indexed.outputs.last_sha }}" 2>/dev/null; then
+            # last_sha exists and is a real commit — diff incrementally
+            FILES=$(git diff --name-only "${{ steps.last_indexed.outputs.last_sha }}" HEAD -- '*.py' | tr '\n' ' ')
+            echo "mode=incremental" >> "$GITHUB_OUTPUT"
+            echo "files=$FILES" >> "$GITHUB_OUTPUT"
+          else
+            # last_sha is stale/unreachable (force-push, history rewrite) — full rebuild
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "files=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run metadata extraction (incremental)
+        if: steps.changed.outputs.mode == 'incremental' && steps.changed.outputs.files != ''
+        run: |
+          python extract_metadata.py --repo . --out ./metadata --only ${{ steps.changed.outputs.files }}
+
+      - name: Run metadata extraction (full rebuild)
+        if: steps.changed.outputs.mode == 'full'
+        run: |
+          python extract_metadata.py --repo . --out ./metadata
+
+      - name: Skip — no Python files changed
+        if: steps.changed.outputs.mode == 'incremental' && steps.changed.outputs.files == ''
+        run: echo "No .py changes in this merge, metadata unchanged."
+
+      - name: Commit and push metadata
+        if: steps.changed.outputs.files != '' || steps.changed.outputs.mode == 'full'
+        run: |
+          cd ./metadata
+          git config user.name "metadata-bot"
+          git config user.email "metadata-bot@users.noreply.github.com"
+          git add .
+          git commit -m "metadata for main@${{ github.sha }}" || echo "Nothing to commit"
+          git push origin HEAD:metadata-branch
