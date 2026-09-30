@@ -65,7 +65,7 @@
       "strip"
     ],
     "summary": "Summary pending LLM integration.",
-    "type_confidence": "inferred"
+    "type_confidence": "declared"
   },
   "body_hash": {
     "file": "extract_metadata.py",
@@ -85,7 +85,7 @@
       "sha256"
     ],
     "summary": "Summary pending LLM integration.",
-    "type_confidence": "inferred"
+    "type_confidence": "declared"
   },
   "annotation_to_str": {
     "file": "extract_metadata.py",
@@ -134,7 +134,7 @@
       "walk"
     ],
     "summary": "Summary pending LLM integration.",
-    "type_confidence": "inferred"
+    "type_confidence": "declared"
   },
   "call_llm": {
     "file": "extract_metadata.py",
@@ -152,7 +152,7 @@
       "print"
     ],
     "summary": "Summary pending LLM integration.",
-    "type_confidence": "inferred"
+    "type_confidence": "declared"
   },
   "infer_missing_metadata": {
     "file": "extract_metadata.py",
@@ -182,7 +182,7 @@
       "print"
     ],
     "summary": "Summary pending LLM integration.",
-    "type_confidence": "inferred"
+    "type_confidence": "declared"
   },
   "needs_llm": {
     "file": "extract_metadata.py",
@@ -205,7 +205,7 @@
       "get"
     ],
     "summary": "Summary pending LLM integration.",
-    "type_confidence": "inferred"
+    "type_confidence": "declared"
   },
   "load_existing_functions": {
     "file": "extract_metadata.py",
@@ -227,7 +227,7 @@
       "update"
     ],
     "summary": "Summary pending LLM integration.",
-    "type_confidence": "inferred"
+    "type_confidence": "declared"
   },
   "shard_name_for": {
     "file": "extract_metadata.py",
@@ -245,7 +245,7 @@
       "replace"
     ],
     "summary": "Summary pending LLM integration.",
-    "type_confidence": "inferred"
+    "type_confidence": "declared"
   },
   "build_call_graph": {
     "file": "extract_metadata.py",
@@ -267,7 +267,7 @@
       "values"
     ],
     "summary": "Summary pending LLM integration.",
-    "type_confidence": "inferred"
+    "type_confidence": "declared"
   },
   "summary_for": {
     "file": "extract_metadata.py",

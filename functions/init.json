@@ -1,0 +1,159 @@
+{
+  "run": {
+    "file": "init.py",
+    "line_start": 34,
+    "line_end": 42,
+    "params": [
+      {
+        "name": "cmd",
+        "type": "unknown"
+      },
+      {
+        "name": "cwd",
+        "type": "unknown"
+      },
+      {
+        "name": "check",
+        "type": "unknown"
+      }
+    ],
+    "returns": "unknown",
+    "body_hash": "9ff87ed25dfa443e",
+    "calls": [
+      "RuntimeError",
+      "join",
+      "print",
+      "run",
+      "strip"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "get_authenticated_remote_url": {
+    "file": "init.py",
+    "line_start": 45,
+    "line_end": 52,
+    "params": [],
+    "returns": "str",
+    "body_hash": "e2eabbfec6603e24",
+    "calls": [
+      "get",
+      "run",
+      "strip"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "remote_branch_exists": {
+    "file": "init.py",
+    "line_start": 55,
+    "line_end": 57,
+    "params": [
+      {
+        "name": "branch",
+        "type": "str"
+      },
+      {
+        "name": "remote_url",
+        "type": "str"
+      }
+    ],
+    "returns": "bool",
+    "body_hash": "8ec477c4eac2f367",
+    "calls": [
+      "bool",
+      "run",
+      "strip"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "create_metadata_branch": {
+    "file": "init.py",
+    "line_start": 60,
+    "line_end": 74,
+    "params": [
+      {
+        "name": "out_dir",
+        "type": "Path"
+      },
+      {
+        "name": "branch",
+        "type": "str"
+      },
+      {
+        "name": "remote_url",
+        "type": "str"
+      }
+    ],
+    "returns": "unknown",
+    "body_hash": "2045d13776c7cefc",
+    "calls": [
+      "exists",
+      "mkdir",
+      "print",
+      "rmtree",
+      "run"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "checkout_existing_branch": {
+    "file": "init.py",
+    "line_start": 77,
+    "line_end": 85,
+    "params": [
+      {
+        "name": "out_dir",
+        "type": "Path"
+      },
+      {
+        "name": "branch",
+        "type": "str"
+      },
+      {
+        "name": "remote_url",
+        "type": "str"
+      }
+    ],
+    "returns": "unknown",
+    "body_hash": "7b16226564aca3ed",
+    "calls": [
+      "exists",
+      "print",
+      "rmtree",
+      "run",
+      "str"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  },
+  "commit_and_push": {
+    "file": "init.py",
+    "line_start": 88,
+    "line_end": 95,
+    "params": [
+      {
+        "name": "out_dir",
+        "type": "Path"
+      },
+      {
+        "name": "branch",
+        "type": "str"
+      },
+      {
+        "name": "commit_message",
+        "type": "str"
+      }
+    ],
+    "returns": "unknown",
+    "body_hash": "7154e293a19adacc",
+    "calls": [
+      "print",
+      "run",
+      "strip"
+    ],
+    "summary": "Summary pending LLM integration.",
+    "type_confidence": "inferred"
+  }
+}

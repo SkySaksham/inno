@@ -17,7 +17,7 @@
     "body_hash": "816a271750869895",
     "calls": [],
     "summary": "Summary pending LLM integration.",
-    "type_confidence": "inferred"
+    "type_confidence": "declared"
   },
   "calculate_total": {
     "file": "test_app.py",

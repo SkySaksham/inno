@@ -1,14 +1,61 @@
 {
-  "run_pylint": {
-    "calls": [],
+  "run": {
+    "calls": [
+      "run"
+    ],
+    "called_by": [
+      "checkout_existing_branch",
+      "commit_and_push",
+      "create_metadata_branch",
+      "get_authenticated_remote_url",
+      "git_blob_hash",
+      "main",
+      "remote_branch_exists",
+      "run"
+    ]
+  },
+  "get_authenticated_remote_url": {
+    "calls": [
+      "run"
+    ],
     "called_by": []
   },
-  "calculate_sum": {
-    "calls": [],
+  "remote_branch_exists": {
+    "calls": [
+      "run"
+    ],
     "called_by": []
   },
-  "greet": {
-    "calls": [],
+  "create_metadata_branch": {
+    "calls": [
+      "run"
+    ],
+    "called_by": []
+  },
+  "checkout_existing_branch": {
+    "calls": [
+      "run"
+    ],
+    "called_by": []
+  },
+  "commit_and_push": {
+    "calls": [
+      "run"
+    ],
+    "called_by": []
+  },
+  "main": {
+    "calls": [
+      "build_call_graph",
+      "extract_functions_from_file",
+      "git_blob_hash",
+      "infer_missing_metadata",
+      "load_existing_functions",
+      "needs_llm",
+      "run",
+      "shard_name_for",
+      "summary_for"
+    ],
     "called_by": []
   },
   "add_numbers": {
@@ -23,21 +70,10 @@
     "calls": [],
     "called_by": []
   },
-  "main": {
-    "calls": [
-      "build_call_graph",
-      "extract_functions_from_file",
-      "git_blob_hash",
-      "infer_missing_metadata",
-      "load_existing_functions",
-      "needs_llm",
-      "shard_name_for",
-      "summary_for"
-    ],
-    "called_by": []
-  },
   "git_blob_hash": {
-    "calls": [],
+    "calls": [
+      "run"
+    ],
     "called_by": [
       "main"
     ]

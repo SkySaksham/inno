@@ -1,17 +1,16 @@
 {
-  "indexed_sha": "1ee36ddb5e606a2458796a1b152c293f583b04f8",
+  "indexed_sha": "2f5ff937bae775ff483576d5d32a1fd4a4a4aa77",
   "files": {
-    "scanner.py": {
-      "blob_hash": "d7b3c7b6bd8e200c1f835e49d4ab672202832f6b",
+    "init.py": {
+      "blob_hash": "5ce451bb78a755030c6166e96380c17580409bb6",
       "functions": [
-        "run_pylint"
-      ]
-    },
-    "app.py": {
-      "blob_hash": "f4a76d0fbbb08321b34db334b0840f2b2064a708",
-      "functions": [
-        "calculate_sum",
-        "greet"
+        "run",
+        "get_authenticated_remote_url",
+        "remote_branch_exists",
+        "create_metadata_branch",
+        "checkout_existing_branch",
+        "commit_and_push",
+        "main"
       ]
     },
     "test_app.py": {
