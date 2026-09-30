@@ -1,0 +1,43 @@
+name: Inno - Self-Updating Repo Metadata
+
+# Drop this single file into .github/workflows/ of any repo to enable it.
+# The tool's scripts are fetched automatically from SkySaksham/inno at
+# runtime — no other files need to exist in this repo.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # needed to push the updated metadata to metadata-branch
+
+concurrency:
+  group: inno-metadata-update
+  cancel-in-progress: false
+
+jobs:
+  update-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Fetches init.py + extract_metadata.py from the tool's own repo.
+      - name: Fetch Inno tool scripts
+        uses: actions/checkout@v4
+        with:
+          repository: SkySaksham/inno
+          ref: main
+          path: .inno-tool
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run metadata pipeline
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .inno-tool/init.py --repo . --script .inno-tool/extract_metadata.py
