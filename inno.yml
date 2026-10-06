@@ -1,15 +1,15 @@
 name: Inno - Self-Updating Repo Metadata
 
-# Drop this single file into .github/workflows/ of any repo to enable it.
-# The tool's scripts are fetched automatically from SkySaksham/inno at
-# runtime — no other files need to exist in this repo.
+# Drop this single file into .github/workflows/ of any repo.
+# Inno fetches init.py + extract_metadata.py at runtime.
 
 on:
   push:
     branches: [main]
 
 permissions:
-  contents: write   # needed to push the updated metadata to metadata-branch
+  contents: write
+  copilot-requests: write
 
 concurrency:
   group: inno-metadata-update
@@ -18,13 +18,15 @@ concurrency:
 jobs:
   update-metadata:
     runs-on: ubuntu-latest
+
     steps:
+      # 1. Checkout the repository being analyzed
       - name: Checkout this repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Fetches init.py + extract_metadata.py from the tool's own repo.
+      # 2. Fetch Inno's scripts
       - name: Fetch Inno tool scripts
         uses: actions/checkout@v4
         with:
@@ -32,12 +34,21 @@ jobs:
           ref: main
           path: .inno-tool
 
+      # 3. Python for init.py + extract_metadata.py
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # 4. Install GitHub Copilot CLI
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      # 5. Run the existing Inno pipeline
       - name: Run metadata pipeline
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .inno-tool/init.py --repo . --script .inno-tool/extract_metadata.py
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python .inno-tool/init.py \
+            --repo . \
+            --script .inno-tool/extract_metadata.py
