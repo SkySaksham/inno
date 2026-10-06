@@ -6,14 +6,14 @@ Reads combined_review.json (output of merge.py).
 
 Comment layout
 --------------
-  ## 🔍 Inno PR review
+  ## Inno PR review
   <summary line>
   <gate status>
 
-  ### ✅ Confirmed by static analysis
+  ### Confirmed by static analysis
   <items with source=linter or source=both>
 
-  ### 🧠 AI-found — needs human judgment
+  ### AI-found — needs human judgment
   <items with source=semantic>
 
   <details> Likely false positives </details>
@@ -52,7 +52,7 @@ ICON      = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"
 SRC_LABEL = {
     "both":     "🔬 Static + AI",
     "linter":   "🔬 Static analysis",
-    "semantic": "🧠 AI semantic",
+    "semantic": "🔬 AI semantic",
 }
 CAT_LABEL = {
     "contract_mismatch": "Contract mismatch",
