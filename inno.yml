@@ -1,7 +1,9 @@
 name: Inno - Self-Updating Repo Metadata
 
 # Runs after every push to main.
-# Only changed Python files are sent to the metadata pipeline.
+# Processes changed Python files incrementally.
+# If metadata-branch is missing, it automatically rebuilds the metadata
+# from the entire repository.
 
 on:
   push:
@@ -27,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       # 2. Fetch Inno OUTSIDE the repository
-      #    This prevents Inno's own .py files from being indexed.
+      #    This prevents Inno's own Python files from being indexed.
       - name: Fetch Inno tool scripts
         run: |
           git clone \
@@ -44,7 +46,7 @@ jobs:
           BASE_SHA="${{ github.event.before }}"
           HEAD_SHA="${{ github.sha }}"
 
-          # Handle the first push to a branch.
+          # Handle first push to a branch.
           if [[ "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
             BASE_SHA="$(git rev-list --max-parents=0 "$HEAD_SHA")"
           fi
@@ -65,33 +67,89 @@ jobs:
             echo "has_python_changes=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # 4. Python
+      # 4. Check whether metadata-branch exists
+      - name: Check metadata branch
+        id: metadata
+        shell: bash
+        run: |
+          if git ls-remote --exit-code \
+            --heads \
+            origin \
+            metadata-branch \
+            >/dev/null 2>&1; then
+
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "metadata-branch exists."
+
+          else
+
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "metadata-branch does NOT exist."
+            echo "A full metadata rebuild will be performed."
+
+          fi
+
+      # 5. Decide whether metadata needs to run
+      - name: Decide whether to update metadata
+        id: should_run
+        shell: bash
+        run: |
+          if [[ \
+            "${{ steps.changed.outputs.has_python_changes }}" == "true" \
+            || \
+            "${{ steps.metadata.outputs.exists }}" == "false"
+          ]]; then
+
+            echo "run=true" >> "$GITHUB_OUTPUT"
+
+          else
+
+            echo "run=false" >> "$GITHUB_OUTPUT"
+
+          fi
+
+      # 6. Python
       - name: Set up Python
+        if: steps.should_run.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 5. Install Copilot CLI
+      # 7. Install Copilot CLI
       - name: Install Copilot CLI
-        if: steps.changed.outputs.has_python_changes == 'true'
+        if: steps.should_run.outputs.run == 'true'
         run: npm install -g @github/copilot
 
-      # 6. Run incremental metadata pipeline
+      # 8. Run metadata pipeline
       - name: Run metadata pipeline
-        if: steps.changed.outputs.has_python_changes == 'true'
+        if: steps.should_run.outputs.run == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          mapfile -t CHANGED_FILES < "${RUNNER_TEMP}/changed-python-files.txt"
+          mapfile -t CHANGED_FILES < \
+            "${RUNNER_TEMP}/changed-python-files.txt"
 
-          python "${RUNNER_TEMP}/inno-tool/init.py" \
-            --repo . \
-            --script "${RUNNER_TEMP}/inno-tool/extract_metadata.py" \
-            --only "${CHANGED_FILES[@]}"
+          if [[ "${{ steps.metadata.outputs.exists }}" == "false" ]]; then
+            echo "metadata-branch is missing."
+            echo "Running a FULL metadata rebuild."
 
-      # 7. Nothing to do when no Python files changed
+            python "${RUNNER_TEMP}/inno-tool/init.py" \
+              --repo . \
+              --script "${RUNNER_TEMP}/inno-tool/extract_metadata.py"
+
+          else
+            echo "Running INCREMENTAL metadata update."
+
+            python "${RUNNER_TEMP}/inno-tool/init.py" \
+              --repo . \
+              --script "${RUNNER_TEMP}/inno-tool/extract_metadata.py" \
+              --only "${CHANGED_FILES[@]}"
+          fi
+
+      # 9. Nothing to do
       - name: Skip metadata update
-        if: steps.changed.outputs.has_python_changes != 'true'
+        if: steps.should_run.outputs.run != 'true'
         run: |
-          echo "No Python files changed. Skipping metadata update."
+          echo "No Python changes and metadata-branch already exists."
+          echo "Skipping metadata update."
