@@ -10,7 +10,7 @@ permissions:
   id-token: write
 
 jobs:
-  inno-review:            # <- this is the name you select as the required status check
+  inno-review:
     runs-on: ubuntu-latest
 
     steps:
@@ -33,7 +33,7 @@ jobs:
       - name: Install linters
         run: pip install pylint bandit
 
-      # Metadata lives on its own branch. ADJUST branch + dir name to match your pipeline.
+      # Metadata lives on its own branch.
       - name: Fetch metadata
         env:
           META_BRANCH: inno-metadata
@@ -64,28 +64,33 @@ jobs:
             --metadata  "metadata" \
             --out       "${RUNNER_TEMP}/payloads.json"
 
+      # -----------------------------------------------------------------------
+      # COPILOT
+      # -----------------------------------------------------------------------
       - name: Install Copilot CLI
         run: npm install -g @github/copilot
 
+      # IMPORTANT:
+      # Use the fine-grained PAT stored as COPILOT_TOKEN.
+      # Do NOT use github.token for Copilot authentication.
       - name: Copilot authentication smoke test
         if: ${{ (vars.INNO_LLM_BACKEND || 'cmd') == 'cmd' }}
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GH_TOKEN: ${{ github.token }}
-          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
         run: |
-          echo "Verifying Copilot CLI authentication with GITHUB_TOKEN..."
+          echo "Verifying Copilot CLI authentication..."
           copilot -p "Respond with OK" --silent || {
-            echo "::error::GitHub Copilot CLI authentication failed with GITHUB_TOKEN. Ensure Copilot access is enabled for this repository or set an appropriate token."
+            echo "::error::GitHub Copilot CLI authentication failed."
             exit 1
           }
 
+      # -----------------------------------------------------------------------
+      # AI REVIEW — Linter findings
+      # -----------------------------------------------------------------------
       - name: AI review (linter findings)
         env:
           INNO_LLM_BACKEND:     ${{ vars.INNO_LLM_BACKEND || 'cmd' }}
-          GITHUB_TOKEN:         ${{ github.token }}
-          GH_TOKEN:             ${{ github.token }}
-          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
           OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
           INNO_LLM_CMD:         "copilot -p"
@@ -96,7 +101,7 @@ jobs:
             --out      "${RUNNER_TEMP}/review.json"
 
       # -----------------------------------------------------------------------
-      # SCAN 2 — Semantic diff review: logic / contract / doc mismatches
+      # SCAN 2 — Semantic diff review
       # -----------------------------------------------------------------------
       - name: Build semantic context (diff + call-graph payloads)
         env:
@@ -112,9 +117,7 @@ jobs:
       - name: Semantic AI review (diff-driven findings)
         env:
           INNO_LLM_BACKEND:     ${{ vars.INNO_LLM_BACKEND || 'cmd' }}
-          GITHUB_TOKEN:         ${{ github.token }}
-          GH_TOKEN:             ${{ github.token }}
-          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
           OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
           INNO_LLM_CMD:         "copilot -p"
@@ -136,17 +139,19 @@ jobs:
             --out      "${RUNNER_TEMP}/combined_review.json"
 
       # Posts the PR comment and FAILS the job if blocking findings remain.
-      # Gate rules:
-      #   linter-backed  -> block on severity >= fail-on
-      #   semantic-only  -> block only when severity >= fail-on AND confidence == high
       - name: Report and gate
         env:
+          # This is intentionally GITHUB_TOKEN, NOT the Copilot PAT.
+          # report.py uses it to post/update the PR comment.
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           python "${RUNNER_TEMP}/inno-tool/report.py" \
             --review  "${RUNNER_TEMP}/combined_review.json" \
             --fail-on high
 
+      # -----------------------------------------------------------------------
+      # ARTIFACTS
+      # -----------------------------------------------------------------------
       - name: Upload artifacts (for metrics)
         if: always()
         uses: actions/upload-artifact@v4
