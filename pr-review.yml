@@ -70,11 +70,19 @@ jobs:
       # and store it as a repo secret. The name below is a placeholder.
       - name: AI review (linter findings)
         env:
+          # Pick ONE backend — set the repo variable + matching secret.
+          # openai  -> set INNO_LLM_BACKEND=openai + OPENAI_API_KEY secret
+          # gemini  -> set INNO_LLM_BACKEND=gemini + GEMINI_API_KEY secret
+          # cmd     -> set INNO_LLM_BACKEND=cmd    + COPILOT_TOKEN secret
+          INNO_LLM_BACKEND:     ${{ vars.INNO_LLM_BACKEND || 'cmd' }}
+          OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
-          INNO_LLM_CMD: "copilot -p"     # set to "mock" to test without Copilot
+          INNO_LLM_CMD:         "copilot -p"
         run: |
           python "${RUNNER_TEMP}/inno-tool/ai_review.py" \
             --payloads "${RUNNER_TEMP}/payloads.json" \
+            --workers  6 \
             --out      "${RUNNER_TEMP}/review.json"
 
       # -----------------------------------------------------------------------
@@ -93,11 +101,15 @@ jobs:
 
       - name: Semantic AI review (diff-driven findings)
         env:
+          INNO_LLM_BACKEND:     ${{ vars.INNO_LLM_BACKEND || 'cmd' }}
+          OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
-          INNO_LLM_CMD: "copilot -p"
+          INNO_LLM_CMD:         "copilot -p"
         run: |
           python "${RUNNER_TEMP}/inno-tool/semantic_review.py" \
             --payloads "${RUNNER_TEMP}/semantic_payloads.json" \
+            --workers  6 \
             --out      "${RUNNER_TEMP}/semantic_findings.json"
 
       # -----------------------------------------------------------------------

@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
 """
-Inno AI review: payloads.json -> LLM -> validated review.json
+ai_review.py  —  Inno: payloads.json -> LLM -> validated review.json
 
-The LLM is asked, per finding, to judge whether it is a real issue, rank its
-severity, explain why, describe downstream impact, and suggest a fix.
-Output is strict JSON that is validated before anything is posted.
+The LLM judges each static-analyzer finding, ranks its severity, explains
+it, describes downstream impact, and suggests a fix.
+Output is strict JSON validated before anything is posted.
 
-LLM backend is configured with the INNO_LLM_CMD env var:
-    INNO_LLM_CMD="copilot -p"   (default) prompt is appended as the last argument
-    INNO_LLM_CMD="mock"         offline canned answers, for testing the pipeline
+LLM backend is configured via llm.py (env vars):
+  INNO_LLM_BACKEND   openai | gemini | cmd | mock
+  OPENAI_API_KEY     needed for openai backend
+  GEMINI_API_KEY     needed for gemini backend
+  INNO_LLM_CMD       needed for cmd backend  (e.g. "copilot -p")
+  INNO_LLM_MODEL     optional model override
+  INNO_LLM_TIMEOUT   per-call timeout in seconds (default 120)
 
-IMPORTANT: confirm the Copilot CLI's current non-interactive flags and which
-tools it may use (keep it read-only) in GitHub's docs, then set INNO_LLM_CMD
-accordingly, e.g. INNO_LLM_CMD="copilot -p" plus the permission flags you want.
+Speed:
+  --workers N   concurrent LLM calls (default 4)
 """
 import argparse
 import json
-import os
-import shlex
-import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import llm   # shared backend
 
 SEVS = ("critical", "high", "medium", "low")
 CONFS = ("low", "medium", "high")
-MAX_FINDINGS = 20
-TIMEOUT_S = 180
+MAX_FINDINGS    = 20
+DEFAULT_WORKERS = 4
 
 SCHEMA = """{
   "is_real_issue": true | false,
@@ -35,6 +38,10 @@ SCHEMA = """{
   "confidence": "low" | "medium" | "high"
 }"""
 
+
+# ---------------------------------------------------------------------------
+# Prompt
+# ---------------------------------------------------------------------------
 
 def build_prompt(p):
     f, fn = p["finding"], p["function"]
@@ -73,81 +80,88 @@ analyzer_severity: {f['severity']}
 """
 
 
-# ------------------------------------------------------------------- LLM ---
-def mock_llm(p):
-    f = p["finding"]
-    return json.dumps({
-        "is_real_issue": True,
-        "severity": "high" if f["severity"] == "high" else f["severity"],
-        "reason": f"[mock] {f['message']}",
-        "impact": "[mock] impact not analyzed in mock mode.",
-        "suggested_fix": "",
-        "confidence": "low",
-    })
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
 
-
-def call_llm(prompt, p):
-    cmd = os.environ.get("INNO_LLM_CMD", "copilot -p")
-    if cmd == "mock":
-        return mock_llm(p)
-    res = subprocess.run(shlex.split(cmd) + [prompt], capture_output=True,
-                         text=True, timeout=TIMEOUT_S)
-    if res.returncode != 0:
-        raise RuntimeError(f"LLM command failed: {res.stderr.strip()[:300]}")
-    return res.stdout
-
-
-def extract_json(text):
+def _extract_json(text):
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
         raise ValueError("no JSON object in reply")
     return json.loads(text[start:end + 1])
 
 
-def validate(obj):
-    sev = str(obj.get("severity", "")).lower()
+def _validate(obj):
+    sev  = str(obj.get("severity",   "")).lower()
     conf = str(obj.get("confidence", "")).lower()
     if sev not in SEVS:
         raise ValueError(f"bad severity: {sev!r}")
     if not isinstance(obj.get("is_real_issue"), bool):
         raise ValueError("is_real_issue must be true/false")
     return {
-        "is_real_issue": obj["is_real_issue"],
-        "severity": sev,
-        "reason": str(obj.get("reason", "")).strip(),
-        "impact": str(obj.get("impact", "")).strip(),
-        "suggested_fix": str(obj.get("suggested_fix", "")).strip(),
-        "confidence": conf if conf in CONFS else "low",
+        "is_real_issue":  obj["is_real_issue"],
+        "severity":       sev,
+        "reason":         str(obj.get("reason",        "")).strip(),
+        "impact":         str(obj.get("impact",         "")).strip(),
+        "suggested_fix":  str(obj.get("suggested_fix",  "")).strip(),
+        "confidence":     conf if conf in CONFS else "low",
     }
 
 
+# ---------------------------------------------------------------------------
+# Per-finding review  (runs in thread pool)
+# ---------------------------------------------------------------------------
+
 def review_one(p):
-    prompt = build_prompt(p)
+    """
+    Call the LLM for one linter finding payload.
+
+    Returns (ai_result | None, prompt_chars, error_str | None).
+    Thread-safe.
+    """
+    prompt   = build_prompt(p)
     last_err = None
+
     for attempt in range(2):
+        retry_sfx = (
+            "\nYour previous reply was not valid JSON. Reply with ONLY the JSON object."
+            if attempt > 0 else ""
+        )
         try:
-            text = call_llm(prompt if attempt == 0 else
-                            prompt + "\nYour previous reply was not valid JSON. Reply with ONLY the JSON object.",
-                            p)
-            return validate(extract_json(text)), len(prompt), None
-        except (ValueError, RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+            raw = llm.call_llm(prompt + retry_sfx, context_hint="is_real_issue")
+            return _validate(_extract_json(raw)), len(prompt), None
+        except (ValueError, RuntimeError, json.JSONDecodeError) as exc:
             last_err = str(exc)
+
     return None, len(prompt), last_err
 
 
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(
+        description="AI review of static-analyzer findings."
+    )
     ap.add_argument("--payloads", required=True)
-    ap.add_argument("--out", default="review.json")
-    ap.add_argument("--max", type=int, default=MAX_FINDINGS)
+    ap.add_argument("--out",     default="review.json")
+    ap.add_argument("--max",     type=int, default=MAX_FINDINGS)
+    ap.add_argument("--workers", type=int, default=DEFAULT_WORKERS,
+                    help="concurrent LLM calls (default 4)")
     ap.add_argument("--dry-run", action="store_true",
                     help="write prompts to prompts.txt and skip the LLM")
     args = ap.parse_args()
 
     with open(args.payloads, encoding="utf-8") as fh:
         data = json.load(fh)
+
     payloads = data["payloads"][:args.max]
-    skipped = len(data["payloads"]) - len(payloads)
+    skipped  = len(data["payloads"]) - len(payloads)
+
+    backend = llm.active_backend()
+    print(f"LLM backend: {backend}  |  workers: {args.workers}  |  "
+          f"findings: {len(payloads)} (skipped {skipped})")
 
     if args.dry_run:
         with open("prompts.txt", "w", encoding="utf-8") as fh:
@@ -156,27 +170,50 @@ def main():
         print(f"Wrote prompts.txt ({len(payloads)} prompts)")
         return
 
-    results = []
-    for p in payloads:
-        ai, prompt_chars, err = review_one(p)
-        if err:
-            print(f"[warn] {p['id']}: AI review failed ({err}); falling back to analyzer severity",
-                  file=sys.stderr)
-        results.append({
-            "id": p["id"],
-            "finding": p["finding"],
-            "function": p["function"]["name"],
-            "metadata_found": p["metadata_found"],
-            "prompt_chars": prompt_chars,      # rough token proxy for your cost metrics
-            "ai": ai,                          # None => AI unavailable for this finding
-            "ai_error": err,
-        })
+    # ---- Concurrent LLM calls ---------------------------------------------
+    idx_map = {p["id"]: i for i, p in enumerate(payloads)}
+    results = [None] * len(payloads)
+
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = {pool.submit(review_one, p): p for p in payloads}
+        done = 0
+        for fut in as_completed(futures):
+            p              = futures[fut]
+            ai, chars, err = fut.result()
+            done += 1
+            status = "✓" if not err else f"✗ {err[:60]}"
+            print(f"  [{done}/{len(payloads)}] {p['id']}: {status}", flush=True)
+            if err:
+                print(
+                    f"[warn] {p['id']}: AI review failed ({err}); "
+                    "falling back to analyzer severity",
+                    file=sys.stderr,
+                )
+            results[idx_map[p["id"]]] = {
+                "id":             p["id"],
+                "finding":        p["finding"],
+                "function":       p["function"]["name"],
+                "metadata_found": p["metadata_found"],
+                "prompt_chars":   chars,
+                "ai":             ai,
+                "ai_error":       err,
+            }
 
     with open(args.out, "w", encoding="utf-8") as fh:
-        json.dump({"base": data.get("base"), "head": data.get("head"),
-                   "not_reviewed": skipped, "results": results}, fh, indent=2)
+        json.dump(
+            {
+                "base":         data.get("base"),
+                "head":         data.get("head"),
+                "backend":      backend,
+                "not_reviewed": skipped,
+                "results":      results,
+            },
+            fh, indent=2,
+        )
+
     ok = sum(r["ai"] is not None for r in results)
-    print(f"Reviewed {ok}/{len(results)} findings with AI ({skipped} over the cap) -> {args.out}")
+    print(f"Reviewed {ok}/{len(results)} findings with AI "
+          f"({skipped} over the cap) -> {args.out}")
 
 
 if __name__ == "__main__":
