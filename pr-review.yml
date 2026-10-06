@@ -1,0 +1,137 @@
+name: Inno - PR Review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  inno-review:            # <- this is the name you select as the required status check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Inno tool scripts
+        run: |
+          git clone --depth 1 --branch main \
+            "https://github.com/SkySaksham/inno.git" \
+            "${RUNNER_TEMP}/inno-tool"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install linters
+        run: pip install pylint bandit
+
+      # Metadata lives on its own branch. ADJUST branch + dir name to match your pipeline.
+      - name: Fetch metadata
+        env:
+          META_BRANCH: inno-metadata
+        run: |
+          if git fetch --depth 1 origin "${META_BRANCH}" 2>/dev/null; then
+            git checkout FETCH_HEAD -- metadata/ 2>/dev/null \
+              && echo "Metadata loaded." \
+              || echo "No metadata/ directory on branch; continuing without it."
+          else
+            echo "No metadata branch found; continuing with ast-only context."
+          fi
+
+      # -----------------------------------------------------------------------
+      # SCAN 1 — Static linters: Pylint + Bandit
+      # -----------------------------------------------------------------------
+      - name: Scan changed lines (Pylint + Bandit)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/scan.py" \
+            --base "origin/${BASE_REF}" --head HEAD \
+            --out "${RUNNER_TEMP}/findings.json"
+
+      - name: Build LLM context (linter payloads)
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/context.py" \
+            --findings  "${RUNNER_TEMP}/findings.json" \
+            --metadata  "metadata" \
+            --out       "${RUNNER_TEMP}/payloads.json"
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      # Auth: confirm in GitHub's Copilot CLI docs which token/env var is supported,
+      # and store it as a repo secret. The name below is a placeholder.
+      - name: AI review (linter findings)
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          INNO_LLM_CMD: "copilot -p"     # set to "mock" to test without Copilot
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/ai_review.py" \
+            --payloads "${RUNNER_TEMP}/payloads.json" \
+            --out      "${RUNNER_TEMP}/review.json"
+
+      # -----------------------------------------------------------------------
+      # SCAN 2 — Semantic diff review: logic / contract / doc mismatches
+      # -----------------------------------------------------------------------
+      - name: Build semantic context (diff + call-graph payloads)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/semantic_context.py" \
+            --repo     "." \
+            --base     "origin/${BASE_REF}" \
+            --head     HEAD \
+            --metadata "metadata" \
+            --out      "${RUNNER_TEMP}/semantic_payloads.json"
+
+      - name: Semantic AI review (diff-driven findings)
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          INNO_LLM_CMD: "copilot -p"
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/semantic_review.py" \
+            --payloads "${RUNNER_TEMP}/semantic_payloads.json" \
+            --out      "${RUNNER_TEMP}/semantic_findings.json"
+
+      # -----------------------------------------------------------------------
+      # MERGE + REPORT
+      # -----------------------------------------------------------------------
+      - name: Merge findings
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/merge.py" \
+            --review   "${RUNNER_TEMP}/review.json" \
+            --semantic "${RUNNER_TEMP}/semantic_findings.json" \
+            --max      15 \
+            --out      "${RUNNER_TEMP}/combined_review.json"
+
+      # Posts the PR comment and FAILS the job if blocking findings remain.
+      # Gate rules:
+      #   linter-backed  -> block on severity >= fail-on
+      #   semantic-only  -> block only when severity >= fail-on AND confidence == high
+      - name: Report and gate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/report.py" \
+            --review  "${RUNNER_TEMP}/combined_review.json" \
+            --fail-on high
+
+      - name: Upload artifacts (for metrics)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inno-results
+          path: |
+            ${{ runner.temp }}/findings.json
+            ${{ runner.temp }}/payloads.json
+            ${{ runner.temp }}/review.json
+            ${{ runner.temp }}/semantic_payloads.json
+            ${{ runner.temp }}/semantic_findings.json
+            ${{ runner.temp }}/combined_review.json
