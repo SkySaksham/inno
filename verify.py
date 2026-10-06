@@ -147,58 +147,53 @@ def make_verification(state, findings, head, eslint_exit=0):
     initial = state.get("initial_results", [])
     threshold = state.get("threshold", "high")
     threshold_rank = report.RANK.get(threshold, report.RANK["high"])
-    baseline_static = []
-    semantic_only = []
+    baseline_static = [item for item in initial if item.get("finding")]
+    semantic_only = [item for item in initial
+                     if not item.get("finding") and item.get("source") == "semantic"]
     false_positives = [item for item in initial if item.get("is_real_issue") is False]
-    known_false_positive_keys = Counter(
-        identity(item["finding"]) for item in false_positives if item.get("finding")
-    )
     suggestions = 0
     for item in initial:
         ai = item.get("ai") or {}
         semantic = item.get("semantic") or {}
         suggestions += bool(ai.get("suggested_fix")) + bool(semantic.get("suggested_fix"))
-        if item.get("is_real_issue") is False:
-            continue
-        finding = item.get("finding")
-        if finding:
-            baseline_static.append(item)
-        elif item.get("source") == "semantic":
-            semantic_only.append(item)
-
-    counts = Counter(identity(f) for f in findings)
-    remaining, fixed, accepted_ids = [], 0, set(state.get("accepted_suggestions", []))
-    old_static_keys = Counter()
+    # Treat signatures as a multiset: matching each baseline instance consumes
+    # one current instance, and leftover current signatures are new findings.
+    available = Counter(identity(f) for f in findings)
+    unresolved_static, resolved_static = [], []
+    accepted_ids = set(state.get("accepted_suggestions", []))
     for item in baseline_static:
         finding = item.get("finding") or {}
         key = identity(finding)
-        old_static_keys[key] += 1
-        if counts[key]:
-            counts[key] -= 1
-            remaining.append(item)
+        if available[key]:
+            available[key] -= 1
+            unresolved_static.append(item)
         else:
-            fixed += 1
-            if (item.get("ai") or {}).get("suggested_fix") and suggestion_was_added(state, item, head):
+            resolved_static.append(item)
+            if (item.get("is_real_issue") is not False
+                    and (item.get("ai") or {}).get("suggested_fix")
+                    and suggestion_was_added(state, item, head)):
                 accepted_ids.add(str(item.get("id") or key))
-    # Semantic-only findings cannot be proven fixed without another semantic pass.
-    remaining.extend(semantic_only)
 
     new_findings = []
+    new_counts = available.copy()
     for finding in findings:
         key = identity(finding)
-        if known_false_positive_keys[key]:
-            known_false_positive_keys[key] -= 1
-        elif old_static_keys[key]:
-            old_static_keys[key] -= 1
-        else:
+        if new_counts[key]:
             new_findings.append(finding)
-    bugs_before = len(baseline_static) + len(semantic_only)
-    bugs_fixed = fixed
-    remaining_count = len(remaining) + len(new_findings)
+            new_counts[key] -= 1
+    # Static silence cannot resolve semantic-only findings.
+    unresolved_baseline = unresolved_static + semantic_only
+    baseline_real = [item for item in initial if item.get("is_real_issue") is not False]
+    bugs_fixed = sum(item.get("is_real_issue") is not False for item in resolved_static)
+    unresolved_bugs = sum(item.get("is_real_issue") is not False
+                          for item in unresolved_baseline)
+    total_after = len(unresolved_baseline) + len(new_findings)
+    remaining_bugs = unresolved_bugs + len(new_findings)
     suggested = int(suggestions)
     accepted = min(len(accepted_ids), suggested)
-    bug_resolution = rate(bugs_fixed, bugs_before)
-    blocking_remaining = [item for item in remaining if report.is_blocking(item, threshold_rank)]
+    bug_resolution = rate(bugs_fixed, len(baseline_real))
+    blocking_remaining = [item for item in unresolved_baseline
+                          if report.is_blocking(item, threshold_rank)]
     blocking_remaining += [f for f in new_findings
                            if report.RANK.get(f.get("severity"), 3) <= threshold_rank]
 
@@ -220,11 +215,13 @@ def make_verification(state, findings, head, eslint_exit=0):
             ) else "PASS"
 
     status = not blocking_remaining and eslint_exit == 0
+    baseline_sha = state.get("initial_head") or "unknown"
     lines = [
         "<!-- inno-review -->",
         "## Inno PR review — post-fix verification",
         "",
-        f"**Analyzed commit:** `{str(head)[:12]}`",
+        f"**Baseline commit:** `{str(baseline_sha)[:12]}`",
+        f"**Verification commit:** `{str(head)[:12]}`",
         "",
         "### Before",
         f"- Total bugs/findings detected: **{len(initial)}**",
@@ -235,9 +232,11 @@ def make_verification(state, findings, head, eslint_exit=0):
         "### Fix activity",
         f"- Total fixes suggested: **{suggested}**",
         f"- Total fixes accepted/applied by the human: **{accepted}**",
-        f"- Total bugs fixed: **{bugs_fixed}**",
+        f"- Resolved baseline findings: **{len(resolved_static)}**",
+        f"- Unresolved baseline findings: **{len(unresolved_baseline)}**",
         f"- Total false positives: **{len(false_positives)}**",
-        f"- Total remaining bugs: **{remaining_count}**",
+        f"- New findings: **{len(new_findings)}**",
+        f"- Total remaining bugs: **{remaining_bugs}**",
         "",
         "### Rates",
         f"- Fix acceptance rate: **{rate(accepted, suggested)}**",
@@ -245,14 +244,23 @@ def make_verification(state, findings, head, eslint_exit=0):
         f"- Bug resolution rate: **{bug_resolution}**",
         "",
         "### Verification",
-        f"```yaml\nPylint: {tool_status['pylint']}\nBandit: {tool_status['bandit']}\nESLint: {tool_status['eslint']}\n```",
+        "| Analyzer | Status |",
+        "|---|---|",
+        f"| Pylint | {tool_status['pylint']} |",
+        f"| Bandit | {tool_status['bandit']} |",
+        f"| ESLint | {tool_status['eslint']} |",
         "",
         "```text",
-        f"Initial findings: {len(initial)}",
-        f"After fixes:       {len(findings)}",
-        f"Fixed:             {bugs_fixed}",
-        f"Remaining:         {remaining_count}",
+        f"Baseline findings:       {len(initial)}",
+        f"Resolved:                {len(resolved_static)}",
+        f"Unresolved:              {len(unresolved_baseline)}",
+        f"New findings:            {len(new_findings)}",
+        f"After verification:      {total_after}",
         "```",
+        "",
+        "### Semantic review",
+        "Semantic AI is not rerun during post-fix verification.",
+        "Previously blocking semantic findings remain unresolved unless independently verified.",
         "",
     ]
     if status:
@@ -267,7 +275,9 @@ def make_verification(state, findings, head, eslint_exit=0):
     next_state["latest_head"] = head
     next_state["latest_findings"] = findings
     next_state["metrics"] = {
-        "before": len(initial), "fixed": bugs_fixed, "remaining": remaining_count,
+        "before": len(initial), "resolved": len(resolved_static),
+        "unresolved": len(unresolved_baseline), "new": len(new_findings),
+        "after": total_after, "fixed_bugs": bugs_fixed, "remaining_bugs": remaining_bugs,
         "suggested": suggested, "accepted": accepted,
         "false_positives": len(false_positives),
     }
@@ -299,8 +309,8 @@ def verify(args):
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as fh:
             fh.write(markdown + "\n")
-    report.post_comment(markdown, state=next_state)
-    print(markdown)
+    if not report.post_comment(markdown, state=next_state, require_existing=True):
+        raise SystemExit("Verification report could not update the existing Inno PR comment.")
     sys.exit(0 if passed else 1)
 
 

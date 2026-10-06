@@ -288,7 +288,7 @@ def pr_number():
     return None
 
 
-def post_comment(markdown, state=None):
+def post_comment(markdown, state=None, require_existing=False):
     token = os.environ.get("GITHUB_TOKEN")
     repo  = os.environ.get("GITHUB_REPOSITORY")
     num   = pr_number()
@@ -306,6 +306,10 @@ def post_comment(markdown, state=None):
         mine = next((c for c in existing if MARKER in (c.get("body") or "")), None)
         if mine:
             gh("PATCH", f"{base}/comments/{mine['id']}", token, {"body": markdown})
+        elif require_existing:
+            print("[error] prior Inno PR comment was not found; refusing to create a duplicate",
+                  file=sys.stderr)
+            return False
         else:
             gh("POST",  f"{base}/{num}/comments",        token, {"body": markdown})
         return True

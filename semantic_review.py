@@ -83,7 +83,8 @@ def build_prompt(payload):
         callees_parts.append(f"- `{ce['name']}`: {sig}  —  {summ}")
     callees_text = "\n".join(callees_parts) or "none indexed"
 
-    return f"""You are a senior engineer performing a semantic code review on a pull request.
+    return f"""
+    You are a senior engineer performing a semantic code review on a pull request.
 You have been given the old and new versions of one function, its diff, its metadata,
 the actual call-site code of every caller, and the signatures of its callees.
 
