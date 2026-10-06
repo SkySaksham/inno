@@ -121,6 +121,7 @@ def main():
     args = ap.parse_args()
 
     changed = changed_lines(args.repo, args.base, args.head)
+    head_sha = run(["git", "rev-parse", args.head], args.repo).stdout.strip() or args.head
     files = sorted(f for f in changed if os.path.isfile(os.path.join(args.repo, f)))
     print(f"Changed Python files: {files or 'none'}")
 
@@ -129,11 +130,27 @@ def main():
     if not args.all:
         findings = [f for f in findings if f["line"] in changed.get(f["file"], set())]
 
+    # The analyzer supplies the target line; preserve its exact diff mapping
+    # and current source snapshot so report.py never trusts an AI-chosen path.
+    for finding in findings:
+        path, line = finding["file"], finding["line"]
+        try:
+            with open(os.path.join(args.repo, path), encoding="utf-8") as source_file:
+                source_lines = source_file.read().splitlines()
+            finding["location"] = {
+                "path": path, "line": line,
+                "changed": line in changed.get(path, set()),
+                "current_source": source_lines[line - 1] if 1 <= line <= len(source_lines) else None,
+            }
+        except (OSError, UnicodeError):
+            finding["location"] = {"path": path, "line": line, "changed": False,
+                                   "current_source": None}
+
     findings.sort(key=lambda f: (SEV_ORDER.get(f["severity"], 3), f["file"], f["line"]))
 
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(
-            {"base": args.base, "head": args.head,
+            {"base": args.base, "head": head_sha,
              "changed_files": files, "findings": findings},
             fh, indent=2,
         )

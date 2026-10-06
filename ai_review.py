@@ -55,6 +55,8 @@ Rules:
 - Severity guide: critical = exploitable now (injection, RCE, leaked secret); high = likely bug or serious weakness;
   medium = real but limited impact; low = minor.
 - Keep the fix minimal and only for the affected lines. Do not rewrite unrelated code.
+- The target file and line are fixed by the analyzer. Do not invent or request another location.
+- suggested_fix must be replacement code for the analyzer's exact reported line only.
 - Reply with ONLY a JSON object, no markdown fences, no extra text, exactly this shape:
 {SCHEMA}
 

@@ -101,6 +101,8 @@ def render_linter_item(item):
 
     if ai:
         lines.append(ai["reason"])
+        if f.get("message"):
+            lines += ["", f"**Evidence:** {f['message']}"]
         if ai.get("impact"):
             lines += ["", f"**Impact:** {ai['impact']}"]
         if ai.get("suggested_fix"):
@@ -194,6 +196,10 @@ def build_markdown(data, threshold):
     summary  = " · ".join(f"{ICON[s]} {counts[s]} {s}" for s in RANK if counts[s]) or "no issues"
 
     md = [MARKER, "## 🔍 Inno PR review", ""]
+    analyzed = data.get("head") or os.environ.get("GITHUB_SHA")
+    if analyzed:
+        md.append(f"**Analyzed commit:** `{str(analyzed)[:12]}` — this review reflects the latest PR commit.")
+        md.append("")
     md.append(f"**{len(all_real)} issue(s):** {summary}")
     md.append("")
 
@@ -310,6 +316,68 @@ def post_comment(markdown):
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _safe_suggestion(item, repo_dir="."):
+    """Validate a scanner-mapped changed line before creating a PR suggestion."""
+    finding = item.get("finding") or {}
+    ai = item.get("ai") or {}
+    location = finding.get("location") or {}
+    replacement = ai.get("suggested_fix", "")
+    path, line, expected = (location.get("path"), location.get("line"),
+                            location.get("current_source"))
+    if (not replacement or not path or not isinstance(line, int) or line < 1
+            or location.get("changed") is not True or path != finding.get("file")
+            or line != finding.get("line") or not isinstance(expected, str)):
+        return None
+    normalized = os.path.normpath(path)
+    if os.path.isabs(path) or normalized == ".." or normalized.startswith(".." + os.sep):
+        return None
+    full_path = os.path.join(repo_dir, normalized)
+    if not os.path.isfile(full_path):
+        return None
+    try:
+        with open(full_path, encoding="utf-8") as fh:
+            current = fh.read().splitlines()
+    except (OSError, UnicodeError):
+        return None
+    if line > len(current) or current[line - 1] != expected:
+        return None
+    if any(line_text.lstrip().startswith("```") for line_text in replacement.splitlines()):
+        return None
+    body = ("**Inno suggested fix** — review and apply this change if correct.\n\n"
+            "```suggestion\n" + replacement.rstrip("\n") + "\n```")
+    return normalized.replace(os.sep, "/"), line, body
+
+
+def post_suggestions(data):
+    """Post eligible suggestions as native pull request review comments."""
+    token, repo, number = (os.environ.get("GITHUB_TOKEN"),
+                           os.environ.get("GITHUB_REPOSITORY"), pr_number())
+    head = data.get("head") or os.environ.get("GITHUB_SHA")
+    if not (token and repo and number and head):
+        return 0
+    comments, seen = [], set()
+    for item in data.get("results", []):
+        if item.get("source") not in ("linter", "both") or item.get("is_real_issue") is False:
+            continue
+        suggestion = _safe_suggestion(item)
+        if not suggestion:
+            continue
+        path, line, body = suggestion
+        key = (path, line, body)
+        if key not in seen:
+            seen.add(key)
+            comments.append({"path": path, "line": line, "side": "RIGHT", "body": body})
+    if not comments:
+        return 0
+    try:
+        gh("POST", f"https://api.github.com/repos/{repo}/pulls/{number}/reviews", token,
+           {"commit_id": head, "event": "COMMENT", "comments": comments})
+        return len(comments)
+    except urllib.error.HTTPError as exc:
+        print(f"[warn] could not post native suggestions (HTTP {exc.code})", file=sys.stderr)
+        return 0
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Post Inno combined review comment and enforce gate."
@@ -335,6 +403,7 @@ def main():
         print(markdown)
 
     post_comment(markdown)
+    print(f"Posted {post_suggestions(data)} native suggestion(s)")
 
     block = blocking_items(data["results"], args.fail_on)
     if block:
