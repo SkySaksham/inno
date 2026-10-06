@@ -217,7 +217,7 @@ def make_verification(state, findings, head, eslint_exit=0):
     status = not blocking_remaining and eslint_exit == 0
     baseline_sha = state.get("initial_head") or "unknown"
     lines = [
-        "<!-- inno-review -->",
+        report.MARKER,
         "## Inno PR review — post-fix verification",
         "",
         f"**Baseline commit:** `{str(baseline_sha)[:12]}`",
@@ -305,12 +305,30 @@ def verify(args):
         except (OSError, ValueError):
             eslint_exit = 2
     markdown, next_state, passed = make_verification(state, findings, head, eslint_exit)
+    try:
+        if report.pr_number():
+            report.ensure_current_pr_head(head)
+    except report.StaleReview as exc:
+        print(str(exc))
+        return
+    try:
+        updated = report.post_comment(markdown, state=next_state, require_existing=True,
+                                      expected_head=head)
+    except report.StaleReview as exc:
+        print(str(exc))
+        return
+    if not updated:
+        raise SystemExit("Verification report could not update the existing Inno PR comment.")
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
+        try:
+            if report.pr_number():
+                report.ensure_current_pr_head(head)
+        except report.StaleReview as exc:
+            print(str(exc))
+            return
         with open(summary_path, "a", encoding="utf-8") as fh:
             fh.write(markdown + "\n")
-    if not report.post_comment(markdown, state=next_state, require_existing=True):
-        raise SystemExit("Verification report could not update the existing Inno PR comment.")
     sys.exit(0 if passed else 1)
 
 

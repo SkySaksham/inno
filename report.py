@@ -45,7 +45,8 @@ import sys
 import urllib.error
 import urllib.request
 
-MARKER    = "<!-- inno-review -->"
+MARKER    = "<!-- inno-pr-review -->"
+LEGACY_MARKERS = ("<!-- inno-review -->",)
 RANK      = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 ICON      = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵"}
 SRC_LABEL = {
@@ -107,6 +108,12 @@ def render_linter_item(item):
         if ai.get("impact"):
             lines += ["", f"**Impact:** {ai['impact']}"]
         if ai.get("suggested_fix"):
+            if not _safe_suggestion(item):
+                lines += [
+                    "",
+                    "**FIXABLE — MANUAL APPLICATION REQUIRED**",
+                    "Suggested fix could not be safely attached to the current diff. Please apply manually.",
+                ]
             lines += ["", "**Suggested fix:**", "", "````python", ai["suggested_fix"], "````"]
         lines += [
             "",
@@ -288,13 +295,44 @@ def pr_number():
     return None
 
 
-def post_comment(markdown, state=None, require_existing=False):
+class StaleReview(Exception):
+    """Raised when the reviewed commit is no longer the PR head."""
+
+
+def ensure_current_pr_head(reviewed_sha):
+    """Fail closed unless the reviewed SHA still matches the live PR head."""
+    token = os.environ.get("GITHUB_TOKEN")
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    number = pr_number()
+    if not number:
+        return True  # Local rendering/tests have no PR to compare.
+    if not (token and repo and reviewed_sha):
+        raise RuntimeError("Cannot verify the current PR head; refusing to publish review output.")
+    url = f"https://api.github.com/repos/{repo}/pulls/{number}"
+    try:
+        pull = gh("GET", url, token) or {}
+    except Exception as exc:
+        raise RuntimeError("Could not verify the current PR head; refusing to publish review output.") from exc
+    current_sha = ((pull.get("head") or {}).get("sha"))
+    if not current_sha:
+        raise RuntimeError("GitHub did not return the current PR head; refusing to publish review output.")
+    if current_sha != reviewed_sha:
+        raise StaleReview(
+            "PR changed while review was running. Skipping stale review output; "
+            "a newer workflow run will review the latest commit."
+        )
+    return True
+
+
+def post_comment(markdown, state=None, require_existing=False, expected_head=None):
     token = os.environ.get("GITHUB_TOKEN")
     repo  = os.environ.get("GITHUB_REPOSITORY")
     num   = pr_number()
     if not (token and repo and num):
         print("[info] not in a PR context; skipping comment")
         return False
+    if expected_head:
+        ensure_current_pr_head(expected_head)
     base = f"https://api.github.com/repos/{repo}/issues"
     if state is not None:
         encoded = base64.urlsafe_b64encode(
@@ -303,14 +341,20 @@ def post_comment(markdown, state=None, require_existing=False):
         markdown += f"\n\n<!-- inno-review-state:{encoded} -->"
     try:
         existing = gh("GET", f"{base}/{num}/comments?per_page=100", token) or []
-        mine = next((c for c in existing if MARKER in (c.get("body") or "")), None)
+        mine = next((c for c in existing if any(
+            marker in (c.get("body") or "") for marker in (MARKER, *LEGACY_MARKERS)
+        )), None)
         if mine:
+            if expected_head:
+                ensure_current_pr_head(expected_head)
             gh("PATCH", f"{base}/comments/{mine['id']}", token, {"body": markdown})
         elif require_existing:
             print("[error] prior Inno PR comment was not found; refusing to create a duplicate",
                   file=sys.stderr)
             return False
         else:
+            if expected_head:
+                ensure_current_pr_head(expected_head)
             gh("POST",  f"{base}/{num}/comments",        token, {"body": markdown})
         return True
     except urllib.error.HTTPError as exc:
@@ -387,7 +431,9 @@ def post_suggestions(data):
     """Post eligible suggestions as native pull request review comments."""
     token, repo, number = (os.environ.get("GITHUB_TOKEN"),
                            os.environ.get("GITHUB_REPOSITORY"), pr_number())
-    head = data.get("head") or os.environ.get("GITHUB_SHA")
+    head = data.get("head")
+    if head and number:
+        ensure_current_pr_head(head)
     if not (token and repo and number and head):
         return 0
     comments, seen = [], set()
@@ -408,6 +454,8 @@ def post_suggestions(data):
     if not comments:
         return 0
     try:
+        if number:
+            ensure_current_pr_head(head)
         gh("POST", f"https://api.github.com/repos/{repo}/pulls/{number}/reviews", token,
            {"commit_id": head, "event": "COMMENT", "comments": comments})
         return len(comments)
@@ -430,12 +478,15 @@ def main():
     with open(args.review, encoding="utf-8") as fh:
         data = json.load(fh)
 
-    markdown = build_markdown(data, args.fail_on)
+    reviewed_head = data.get("head")
+    if pr_number():
+        try:
+            ensure_current_pr_head(reviewed_head)
+        except StaleReview as exc:
+            print(str(exc))
+            return
 
-    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-    if summary_path:
-        with open(summary_path, "a", encoding="utf-8") as fh:
-            fh.write(markdown + "\n")
+    markdown = build_markdown(data, args.fail_on)
 
     if args.print:
         print(markdown)
@@ -447,8 +498,23 @@ def main():
         "threshold": args.fail_on,
         "accepted_suggestions": [],
     }
-    post_comment(markdown, state=state)
-    print(f"Posted {post_suggestions(data)} native suggestion(s)")
+    try:
+        post_comment(markdown, state=state, expected_head=reviewed_head)
+        print(f"Posted {post_suggestions(data)} native suggestion(s)")
+    except StaleReview as exc:
+        print(str(exc))
+        return
+
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        if pr_number():
+            try:
+                ensure_current_pr_head(reviewed_head)
+            except StaleReview as exc:
+                print(str(exc))
+                return
+        with open(summary_path, "a", encoding="utf-8") as fh:
+            fh.write(markdown + "\n")
 
     block = blocking_items(data["results"], args.fail_on)
     if block:

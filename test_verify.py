@@ -169,13 +169,16 @@ class VerificationTests(unittest.TestCase):
                                    eslint=None, eslint_exit=None)
             with patch.dict(os.environ, {"GITHUB_TOKEN": "token", "GITHUB_REPOSITORY": "owner/repo",
                                          "GITHUB_EVENT_PATH": event_path}, clear=False), \
-                 patch.object(report, "gh", side_effect=[
-                     [{"id": 99, "body": report.MARKER + "\nold report"}], {}
+             patch.object(report, "gh", side_effect=[
+                     {"head": {"sha": "head456"}},
+                     {"head": {"sha": "head456"}},
+                     [{"id": 99, "body": "<!-- inno-review -->\nold report"}],
+                     {"head": {"sha": "head456"}}, {},
                  ]) as gh, self.assertRaises(SystemExit) as exit_error:
                 verify.verify(args)
             self.assertEqual(exit_error.exception.code, 0)
-            self.assertEqual(gh.call_count, 2)
-            method, url, token, payload = gh.call_args_list[1].args
+            self.assertEqual(gh.call_count, 5)
+            method, url, token, payload = gh.call_args_list[4].args
             self.assertEqual(method, "PATCH")
             self.assertTrue(url.endswith("/issues/comments/99"))
             self.assertEqual(token, "token")
@@ -206,10 +209,14 @@ class VerificationTests(unittest.TestCase):
                                    eslint=None, eslint_exit=None)
             with patch.dict(os.environ, {"GITHUB_TOKEN": "token", "GITHUB_REPOSITORY": "owner/repo",
                                          "GITHUB_EVENT_PATH": event_path}, clear=False), \
-                 patch.object(report, "gh", return_value=[]) as gh, \
+                 patch.object(report, "gh", side_effect=[
+                     {"head": {"sha": "head456"}},
+                     {"head": {"sha": "head456"}},
+                     [],
+                 ]) as gh, \
                  self.assertRaisesRegex(SystemExit, "could not update the existing"):
                 verify.verify(args)
-            self.assertEqual(gh.call_count, 1)
+            self.assertEqual(gh.call_count, 3)
 
 
 if __name__ == "__main__":

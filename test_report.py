@@ -43,6 +43,16 @@ class SuggestionTests(unittest.TestCase):
     def test_missing_exact_mapping_falls_back(self):
         self.assertIsNone(report._safe_suggestion(self.item(changed=False), self.temp.name))
 
+    def test_unmappable_fix_is_shown_as_manual_textual_fallback(self):
+        item = self.item(changed=False)
+        item["severity"] = "high"
+        item["finding"].update({"rule_id": "E0001", "tool": "pylint", "message": "parse error"})
+        item["ai"].update({"reason": "syntax issue", "confidence": "high"})
+        rendered = report.render_linter_item(item)
+        self.assertIn("FIXABLE — MANUAL APPLICATION REQUIRED", rendered)
+        self.assertIn("Suggested fix could not be safely attached to the current diff.", rendered)
+        self.assertIn("query = safe_input()", rendered)
+
     def test_unchanged_line_rejected(self):
         self.assertIsNone(report._safe_suggestion(self.item(line=2, changed=False, expected="next_line = 1"),
                                                   self.temp.name))
@@ -86,7 +96,9 @@ class SuggestionTests(unittest.TestCase):
         with patch.dict(os.environ, {"GITHUB_TOKEN": "token", "GITHUB_REPOSITORY": "o/r"}), \
              patch.object(report, "pr_number", return_value=3), \
              patch.object(report, "_safe_suggestion", return_value=("app.py", 1, 1, "```suggestion\nnew\n```")), \
-             patch.object(report, "gh", return_value={}) as gh:
+             patch.object(report, "gh", side_effect=[
+                 {"head": {"sha": "abc123"}}, {"head": {"sha": "abc123"}}, {}
+             ]) as gh:
             self.assertEqual(report.post_suggestions(data), 1)
         request = gh.call_args.args[3]
         self.assertEqual(request["event"], "COMMENT")
@@ -99,13 +111,33 @@ class SuggestionTests(unittest.TestCase):
         with patch.dict(os.environ, {"GITHUB_TOKEN": "token", "GITHUB_REPOSITORY": "o/r"}), \
              patch.object(report, "pr_number", return_value=3), \
              patch.object(report, "_safe_suggestion", return_value=native), \
-             patch.object(report, "gh", return_value={}) as gh:
+             patch.object(report, "gh", side_effect=[
+                 {"head": {"sha": "abc123"}}, {"head": {"sha": "abc123"}}, {}
+             ]) as gh:
             self.assertEqual(report.post_suggestions(data), 1)
         comment = gh.call_args.args[3]["comments"][0]
         self.assertEqual(comment["start_line"], 39)
         self.assertEqual(comment["start_side"], "RIGHT")
         self.assertEqual(comment["line"], 40)
         self.assertEqual(comment["side"], "RIGHT")
+
+    def test_stale_review_head_prevents_native_suggestion_post(self):
+        data = {"head": "old123", "results": [self.item()]}
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "token", "GITHUB_REPOSITORY": "o/r"}), \
+             patch.object(report, "pr_number", return_value=3), \
+             patch.object(report, "_safe_suggestion", return_value=("app.py", 1, 1, "suggestion")), \
+             patch.object(report, "gh", return_value={"head": {"sha": "new456"}}) as gh:
+            with self.assertRaises(report.StaleReview):
+                report.post_suggestions(data)
+        self.assertEqual(gh.call_count, 1)
+        self.assertTrue(gh.call_args.args[1].endswith("/pulls/3"))
+
+    def test_existing_legacy_summary_marker_is_updated(self):
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "token", "GITHUB_REPOSITORY": "o/r"}), \
+             patch.object(report, "pr_number", return_value=3), \
+             patch.object(report, "gh", return_value=[{"id": 7, "body": "<!-- inno-review --> old"}]) as gh:
+            self.assertTrue(report.post_comment("new report"))
+        self.assertEqual(gh.call_args.args[0], "PATCH")
 
     def test_pylint_e0001_can_suggest_adjacent_previous_changed_line(self):
         with open(os.path.join(self.temp.name, "app.py"), "w", encoding="utf-8") as fh:
