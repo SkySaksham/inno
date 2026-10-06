@@ -197,6 +197,9 @@ def merge(linter_results, semantic_results, cap):
                 "finding":      lr["finding"],
                 "ai":           lr.get("ai"),
                 "semantic":     matched_sem,
+                "semantic_location": {"file": matched_sr["file"],
+                                      "start_line": matched_sr.get("start_line"),
+                                      "changed_lines": matched_sr.get("changed_lines", [])},
                 "severity":     merged_sev,
                 "confidence":   conf,
                 "is_real_issue": real,
@@ -230,6 +233,9 @@ def merge(linter_results, semantic_results, cap):
                 "finding":      None,
                 "ai":           None,
                 "semantic":     sf,
+                "semantic_location": {"file": sr["file"],
+                                      "start_line": sr.get("start_line"),
+                                      "changed_lines": sr.get("changed_lines", [])},
                 "severity":     sf["severity"],
                 "confidence":   sf["confidence"],
                 "is_real_issue": None,
@@ -299,4 +305,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -53,7 +53,9 @@ FINDING_SCHEMA = """{
       "title":         "short one-line description",
       "explanation":   "1-3 sentences",
       "evidence":      "exact quote or line reference that proves this issue",
-      "suggested_fix": "replacement code or empty string"
+      "suggested_fix": "replacement code or empty string",
+      "fix": {"start_line": 1, "end_line": 1, "replacement": "code",
+              "explanation": "why"} | null
     }
   ]
 }"""
@@ -102,12 +104,17 @@ Rules:
   3. The call graph is approximate (matched by name). Confirm from the actual
      call-site code before reporting a caller mismatch.
   4. Do not invent issues. If you are unsure, set confidence to "low".
-  5. Reply with ONLY a JSON object, no markdown, no extra text, exactly this shape:
+  5. Include a minimal structured fix for each finding when safely possible. Use only
+     changed_lines and the supplied function. The range must be at most 3 lines and
+     include a changed line. Otherwise set fix to null and provide a textual fix.
+  6. Reply with ONLY a JSON object, no markdown, no extra text, exactly this shape:
 {FINDING_SCHEMA}
 
 <function>
 name: {p['func_name']}
 file: {p['file']}
+start_line: {p['start_line']}
+changed_lines: {json.dumps(p['changed_lines'])}
 </function>
 
 <old_source>
@@ -158,6 +165,24 @@ def _validate_finding(raw):
     sev  = str(raw.get("severity",   "")).lower()
     conf = str(raw.get("confidence", "")).lower()
     cat  = str(raw.get("category",   "")).lower()
+    fix = raw.get("fix")
+    if isinstance(fix, dict):
+        start, end = fix.get("start_line"), fix.get("end_line")
+        replacement = str(fix.get("replacement", "")).strip("\n")
+        explanation = str(fix.get("explanation", "")).strip()
+        if (isinstance(start, bool) or not isinstance(start, int)
+                or isinstance(end, bool) or not isinstance(end, int)
+                or start < 1 or end < start or end - start + 1 > 3
+                or not replacement.strip() or not explanation):
+            fix = None
+        else:
+            fix = {"start_line": start, "end_line": end,
+                   "replacement": replacement, "explanation": explanation}
+    else:
+        fix = None
+    suggested_fix = str(raw.get("suggested_fix", "")).strip()
+    if fix:
+        suggested_fix = fix["replacement"]
     return {
         "category":      cat  if cat  in CATS  else "logic_bug",
         "severity":      sev  if sev  in SEVS  else "low",
@@ -165,7 +190,8 @@ def _validate_finding(raw):
         "title":         str(raw.get("title",        "")).strip(),
         "explanation":   str(raw.get("explanation",  "")).strip(),
         "evidence":      evidence,
-        "suggested_fix": str(raw.get("suggested_fix", "")).strip(),
+        "suggested_fix": suggested_fix,
+        "fix": fix,
     }
 
 
@@ -285,6 +311,8 @@ def main():
                 "id":           p["id"],
                 "func_name":    p["func_name"],
                 "file":         p["file"],
+                "start_line":   p["start_line"],
+                "changed_lines": p["changed_lines"],
                 "findings":     findings,
                 "prompt_chars": chars,
                 "error":        err,

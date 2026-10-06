@@ -338,6 +338,8 @@ def build_payloads(repo, base, head, meta_dir):
                 "id":          f"SF{counter}",
                 "func_name":   fname,
                 "file":        filepath,
+                "start_line":  new_node.lineno,
+                "changed_lines": sorted(fn_lines & changed_lineset),
                 "old_source":  old_seg or "",
                 "new_source":  new_seg,
                 "diff_hunk":   diff,
@@ -377,4 +379,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

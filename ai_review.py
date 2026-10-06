@@ -65,7 +65,9 @@ Rules:
   within one line before or after the analyzer line, when nearby context shows that is necessary.
 - The file must be exactly the analyzer file. Use the supplied source_context and changed_lines_nearby;
   do not invent paths, line numbers, or source content. The proposed range must include a changed line
-  and its end_line must be one of changed_lines_nearby. If no safe range is available, set fix to null.
+  and its end_line must be one of changed_lines_nearby. Every real issue must include a safe
+  structured fix when possible. If no safe range is available, set fix to null and give the
+  best textual suggested_fix.
 - suggested_fix remains a textual fallback. If fix is present, suggested_fix should contain its replacement.
 - Reply with ONLY a JSON object, no markdown fences, no extra text, exactly this shape:
 {SCHEMA}

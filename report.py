@@ -161,12 +161,10 @@ def render_semantic_item(item):
         lines += ["", f"> **Evidence:** {sem['evidence']}"]
     if sem.get("suggested_fix"):
         lines += ["", "**Suggested fix:**", "", "````python", sem["suggested_fix"], "````"]
-    lines += [
-        "",
-        "<sub>No inline suggestion button — this finding is outside the diff. "
-        "Apply the fix manually if accepted.</sub>",
-        "",
-    ]
+    if not _safe_suggestion(item):
+        lines += ["", "<sub>GitHub can show a one-click suggestion only when the fix maps safely "
+                  "to changed lines; this fix is shown above for manual application.</sub>"]
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -372,6 +370,40 @@ def post_comment(markdown, state=None, require_existing=False, expected_head=Non
 
 def _safe_suggestion(item, repo_dir="."):
     """Validate a small AI range against scanner source and diff snapshots."""
+    if item.get("source") == "semantic":
+        sem = item.get("semantic") or {}
+        loc = item.get("semantic_location") or {}
+        fix = sem.get("fix") or {}
+        path = loc.get("file")
+        start, end = fix.get("start_line"), fix.get("end_line")
+        changed = loc.get("changed_lines") or []
+        replacement = fix.get("replacement", "")
+        explanation = fix.get("explanation", "")
+        if (not path or not isinstance(start, int) or isinstance(start, bool)
+                or not isinstance(end, int) or isinstance(end, bool)
+                or start < 1 or end < start or end - start + 1 > 3
+                or not any(start <= line <= end for line in changed)
+                or end not in changed or not replacement.strip() or not explanation.strip()):
+            return None
+        normalized = os.path.normpath(path)
+        if os.path.isabs(path) or normalized == ".." or normalized.startswith(".." + os.sep):
+            return None
+        root = os.path.realpath(repo_dir)
+        full = os.path.realpath(os.path.join(root, normalized))
+        try:
+            if os.path.commonpath((root, full)) != root or not os.path.isfile(full):
+                return None
+            with open(full, encoding="utf-8") as fh:
+                current = fh.read().splitlines()
+        except (OSError, UnicodeError, ValueError):
+            return None
+        if end > len(current) or any(line < 1 or line > len(current) for line in changed):
+            return None
+        if any(line_text.lstrip().startswith("```") for line_text in replacement.splitlines()):
+            return None
+        body = (f"**Inno suggested fix** — {explanation.strip()}\n\n"
+                "```suggestion\n" + replacement.rstrip("\n") + "\n```")
+        return normalized.replace(os.sep, "/"), start, end, body
     finding = item.get("finding") or {}
     ai = item.get("ai") or {}
     location = finding.get("location") or {}
@@ -438,7 +470,7 @@ def post_suggestions(data):
         return 0
     comments, seen = [], set()
     for item in data.get("results", []):
-        if item.get("source") not in ("linter", "both") or item.get("is_real_issue") is False:
+        if item.get("source") not in ("linter", "both", "semantic") or item.get("is_real_issue") is False:
             continue
         suggestion = _safe_suggestion(item)
         if not suggestion:
