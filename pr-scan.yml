@@ -1,0 +1,52 @@
+name: Inno - PR Scan
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the PR with full history so base...head diff works
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2. Fetch Inno outside the repo (use a deploy key/PAT instead if inno is private)
+      - name: Fetch Inno tool scripts
+        run: |
+          git clone --depth 1 --branch main \
+            "https://github.com/SkySaksham/inno.git" \
+            "${RUNNER_TEMP}/inno-tool"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install linters
+        run: pip install pylint bandit
+
+      # 3. git diff -> Pylint + Bandit -> findings.json
+      - name: Run scan
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/scan.py" \
+            --base "origin/${BASE_REF}" \
+            --head HEAD \
+            --out "${RUNNER_TEMP}/findings.json"
+
+      # 4. Keep the results so the next step (AI review) can read them
+      - name: Upload findings
+        uses: actions/upload-artifact@v4
+        with:
+          name: inno-findings
+          path: ${{ runner.temp }}/findings.json
