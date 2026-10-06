@@ -53,6 +53,16 @@ def changed_lines(repo, base, head):
     return changed
 
 
+def finding_on_changed_context(finding, changed):
+    """Keep findings on changed lines plus adjacent Pylint syntax errors."""
+    path, line = finding.get("file"), finding.get("line")
+    changed_for_file = changed.get(path, set())
+    if line in changed_for_file:
+        return True
+    return (finding.get("tool") == "pylint" and finding.get("rule_id") == "E0001"
+            and any(abs(line - changed_line) <= 1 for changed_line in changed_for_file))
+
+
 def run_pylint(repo, files):
     if not files:
         return []
@@ -128,23 +138,34 @@ def main():
     findings = run_pylint(args.repo, files) + run_bandit(args.repo, files)
 
     if not args.all:
-        findings = [f for f in findings if f["line"] in changed.get(f["file"], set())]
+        findings = [f for f in findings if finding_on_changed_context(f, changed)]
 
-    # The analyzer supplies the target line; preserve its exact diff mapping
-    # and current source snapshot so report.py never trusts an AI-chosen path.
+    # Preserve a bounded source window and nearby diff lines. These snapshots
+    # let report.py validate a small AI-proposed range without trusting its
+    # choice of file or an arbitrary repository location.
     for finding in findings:
         path, line = finding["file"], finding["line"]
         try:
             with open(os.path.join(args.repo, path), encoding="utf-8") as source_file:
                 source_lines = source_file.read().splitlines()
+            context_start = max(1, line - 1)
+            context_end = min(len(source_lines), line + 1)
             finding["location"] = {
                 "path": path, "line": line,
                 "changed": line in changed.get(path, set()),
                 "current_source": source_lines[line - 1] if 1 <= line <= len(source_lines) else None,
+                "source_context": {
+                    "start_line": context_start,
+                    "lines": source_lines[context_start - 1:context_end],
+                },
+                "changed_lines_nearby": sorted(
+                    changed.get(path, set()).intersection(range(line - 1, line + 2))
+                ),
             }
         except (OSError, UnicodeError):
             finding["location"] = {"path": path, "line": line, "changed": False,
-                                   "current_source": None}
+                                   "current_source": None, "source_context": None,
+                                   "changed_lines_nearby": []}
 
     findings.sort(key=lambda f: (SEV_ORDER.get(f["severity"], 3), f["file"], f["line"]))
 

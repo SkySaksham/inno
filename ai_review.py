@@ -35,6 +35,13 @@ SCHEMA = """{
   "reason": "why this is (or is not) a problem, 1-3 sentences",
   "impact": "what could break or be exploited downstream, 1-2 sentences",
   "suggested_fix": "corrected replacement code for the affected lines, or empty string",
+  "fix": {
+    "file": "repository-relative path",
+    "start_line": 1,
+    "end_line": 1,
+    "replacement": "replacement code for this exact contiguous range",
+    "explanation": "why this range is required"
+  } | null,
   "confidence": "low" | "medium" | "high"
 }"""
 
@@ -54,9 +61,12 @@ Rules:
 - If the analyzer finding is a false positive, set is_real_issue to false and explain why.
 - Severity guide: critical = exploitable now (injection, RCE, leaked secret); high = likely bug or serious weakness;
   medium = real but limited impact; low = minor.
-- Keep the fix minimal and only for the affected lines. Do not rewrite unrelated code.
-- The target file and line are fixed by the analyzer. Do not invent or request another location.
-- suggested_fix must be replacement code for the analyzer's exact reported line only.
+- Keep the fix minimal. A fix may cover a contiguous range of at most 3 lines
+  within one line before or after the analyzer line, when nearby context shows that is necessary.
+- The file must be exactly the analyzer file. Use the supplied source_context and changed_lines_nearby;
+  do not invent paths, line numbers, or source content. The proposed range must include a changed line
+  and its end_line must be one of changed_lines_nearby. If no safe range is available, set fix to null.
+- suggested_fix remains a textual fallback. If fix is present, suggested_fix should contain its replacement.
 - Reply with ONLY a JSON object, no markdown fences, no extra text, exactly this shape:
 {SCHEMA}
 
@@ -66,6 +76,8 @@ rule: {f['rule_id']} ({f['rule_name']})
 message: {f['message']}
 location: {f['file']}:{f['line']}
 analyzer_severity: {f['severity']}
+source_context: {json.dumps(f.get('location', {}).get('source_context'), ensure_ascii=False)}
+changed_lines_nearby: {json.dumps(f.get('location', {}).get('changed_lines_nearby', []))}
 </finding>
 
 <code function="{fn['name']}" lines="{fn['start_line']}-{fn['end_line']}">
@@ -100,12 +112,40 @@ def _validate(obj):
         raise ValueError(f"bad severity: {sev!r}")
     if not isinstance(obj.get("is_real_issue"), bool):
         raise ValueError("is_real_issue must be true/false")
+    fix = obj.get("fix")
+    if not isinstance(fix, dict):
+        fix = None
+    else:
+        try:
+            raw_start = fix.get("start_line")
+            raw_end = fix.get("end_line")
+            if (isinstance(raw_start, bool) or not isinstance(raw_start, int)
+                    or isinstance(raw_end, bool) or not isinstance(raw_end, int)):
+                raise ValueError("fix lines must be integers")
+            start_line = raw_start
+            end_line = raw_end
+            fix_file = str(fix.get("file", "")).strip()
+            replacement = str(fix.get("replacement", "")).strip("\n")
+            explanation = str(fix.get("explanation", "")).strip()
+            if (not fix_file or start_line < 1 or end_line < start_line
+                    or end_line - start_line + 1 > 3 or not replacement or not explanation):
+                fix = None
+            else:
+                fix = {"file": fix_file, "start_line": start_line,
+                       "end_line": end_line, "replacement": replacement,
+                       "explanation": explanation}
+        except (TypeError, ValueError):
+            fix = None
+    suggested_fix = str(obj.get("suggested_fix", "")).strip()
+    if fix:
+        suggested_fix = fix["replacement"]
     return {
         "is_real_issue":  obj["is_real_issue"],
         "severity":       sev,
         "reason":         str(obj.get("reason",        "")).strip(),
         "impact":         str(obj.get("impact",         "")).strip(),
-        "suggested_fix":  str(obj.get("suggested_fix",  "")).strip(),
+        "suggested_fix":  suggested_fix,
+        "fix":            fix,
         "confidence":     conf if conf in CONFS else "low",
     }
 

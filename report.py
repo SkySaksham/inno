@@ -327,21 +327,38 @@ def post_comment(markdown, state=None, require_existing=False):
 # ---------------------------------------------------------------------------
 
 def _safe_suggestion(item, repo_dir="."):
-    """Validate a scanner-mapped changed line before creating a PR suggestion."""
+    """Validate a small AI range against scanner source and diff snapshots."""
     finding = item.get("finding") or {}
     ai = item.get("ai") or {}
     location = finding.get("location") or {}
-    replacement = ai.get("suggested_fix", "")
-    path, line, expected = (location.get("path"), location.get("line"),
-                            location.get("current_source"))
-    if (not replacement or not path or not isinstance(line, int) or line < 1
-            or location.get("changed") is not True or path != finding.get("file")
-            or line != finding.get("line") or not isinstance(expected, str)):
+    fix = ai.get("fix") or {}
+    path = fix.get("file")
+    finding_path, finding_line = finding.get("file"), finding.get("line")
+    start_line, end_line = fix.get("start_line"), fix.get("end_line")
+    replacement = fix.get("replacement", "")
+    explanation = fix.get("explanation", "")
+    changed_nearby = location.get("changed_lines_nearby") or []
+    context = location.get("source_context") or {}
+    if (not path or path != finding_path or path != location.get("path")
+            or not isinstance(finding_line, int) or finding_line < 1
+            or not isinstance(start_line, int) or isinstance(start_line, bool)
+            or not isinstance(end_line, int) or isinstance(end_line, bool)
+            or start_line < 1 or end_line < start_line or end_line - start_line + 1 > 3
+            or start_line < finding_line - 1 or end_line > finding_line + 1
+            or not isinstance(replacement, str) or not replacement.strip()
+            or not isinstance(explanation, str) or not explanation.strip()
+            or not changed_nearby or end_line not in changed_nearby):
         return None
     normalized = os.path.normpath(path)
     if os.path.isabs(path) or normalized == ".." or normalized.startswith(".." + os.sep):
         return None
-    full_path = os.path.join(repo_dir, normalized)
+    repo_root = os.path.realpath(repo_dir)
+    full_path = os.path.realpath(os.path.join(repo_root, normalized))
+    try:
+        if os.path.commonpath((repo_root, full_path)) != repo_root:
+            return None
+    except ValueError:
+        return None
     if not os.path.isfile(full_path):
         return None
     try:
@@ -349,13 +366,21 @@ def _safe_suggestion(item, repo_dir="."):
             current = fh.read().splitlines()
     except (OSError, UnicodeError):
         return None
-    if line > len(current) or current[line - 1] != expected:
+    context_start = context.get("start_line")
+    context_lines = context.get("lines")
+    if (not isinstance(context_start, int) or not isinstance(context_lines, list)
+            or start_line < context_start
+            or end_line >= context_start + len(context_lines)):
         return None
+    expected_range = context_lines[start_line - context_start:end_line - context_start + 1]
+    if end_line > len(current) or current[start_line - 1:end_line] != expected_range:
+        return None
+    replacement = replacement.replace("\r\n", "\n").rstrip("\n")
     if any(line_text.lstrip().startswith("```") for line_text in replacement.splitlines()):
         return None
-    body = ("**Inno suggested fix** — review and apply this change if correct.\n\n"
+    body = (f"**Inno suggested fix** — {explanation.strip()}\n\n"
             "```suggestion\n" + replacement.rstrip("\n") + "\n```")
-    return normalized.replace(os.sep, "/"), line, body
+    return normalized.replace(os.sep, "/"), start_line, end_line, body
 
 
 def post_suggestions(data):
@@ -372,11 +397,14 @@ def post_suggestions(data):
         suggestion = _safe_suggestion(item)
         if not suggestion:
             continue
-        path, line, body = suggestion
-        key = (path, line, body)
+        path, start_line, end_line, body = suggestion
+        key = (path, start_line, end_line, body)
         if key not in seen:
             seen.add(key)
-            comments.append({"path": path, "line": line, "side": "RIGHT", "body": body})
+            comment = {"path": path, "line": end_line, "side": "RIGHT", "body": body}
+            if start_line < end_line:
+                comment.update({"start_line": start_line, "start_side": "RIGHT"})
+            comments.append(comment)
     if not comments:
         return 0
     try:

@@ -5,6 +5,8 @@ import unittest
 from unittest.mock import patch
 
 import report
+import scan
+import ai_review
 
 
 class SuggestionTests(unittest.TestCase):
@@ -16,12 +18,22 @@ class SuggestionTests(unittest.TestCase):
 
     def item(self, line=1, path="app.py", changed=True, expected="query = input()",
              replacement="query = safe_input()"):
+        source_lines = ["query = input()", "next_line = 1"]
+        context_start = max(1, line - 1)
+        context_end = min(len(source_lines), line + 1)
         return {
             "source": "linter", "is_real_issue": True,
             "finding": {"file": path, "line": line,
-                        "location": {"path": path, "line": line, "changed": changed,
-                                     "current_source": expected}},
-            "ai": {"suggested_fix": replacement},
+                        "location": {
+                            "path": path, "line": line, "changed": changed,
+                            "current_source": expected,
+                            "source_context": {"start_line": context_start,
+                                               "lines": source_lines[context_start - 1:context_end]},
+                            "changed_lines_nearby": [line] if changed else [],
+                        }},
+            "ai": {"suggested_fix": replacement,
+                   "fix": {"file": path, "start_line": line, "end_line": line,
+                           "replacement": replacement, "explanation": "minimal repair"}},
         }
 
     def test_valid_changed_line_makes_native_suggestion(self):
@@ -41,7 +53,7 @@ class SuggestionTests(unittest.TestCase):
     def test_multiline_replacement_keeps_suggestion_fence(self):
         result = report._safe_suggestion(
             self.item(replacement='query = (\n    "SELECT ?",\n    (user_id,),\n)'), self.temp.name)
-        self.assertIn("```suggestion\nquery = (\n    \"SELECT ?\",\n    (user_id,),\n)\n```", result[2])
+        self.assertIn("```suggestion\nquery = (\n    \"SELECT ?\",\n    (user_id,),\n)\n```", result[3])
 
     def test_multiple_findings_keep_distinct_locations_and_do_not_edit_source(self):
         second = self.item(line=2, expected="next_line = 1", replacement="next_line = 2")
@@ -73,13 +85,77 @@ class SuggestionTests(unittest.TestCase):
         data = {"head": "abc123", "results": [self.item()]}
         with patch.dict(os.environ, {"GITHUB_TOKEN": "token", "GITHUB_REPOSITORY": "o/r"}), \
              patch.object(report, "pr_number", return_value=3), \
-             patch.object(report, "_safe_suggestion", return_value=("app.py", 1, "```suggestion\nnew\n```")), \
+             patch.object(report, "_safe_suggestion", return_value=("app.py", 1, 1, "```suggestion\nnew\n```")), \
              patch.object(report, "gh", return_value={}) as gh:
             self.assertEqual(report.post_suggestions(data), 1)
         request = gh.call_args.args[3]
         self.assertEqual(request["event"], "COMMENT")
         self.assertIn("suggestion", request["comments"][0]["body"])
         self.assertNotIn("commit", request["comments"][0])
+
+    def test_native_review_comment_uses_both_endpoints_for_multiline_range(self):
+        data = {"head": "abc123", "results": [self.item()]}
+        native = ("app.py", 39, 40, "```suggestion\nreplacement\n```")
+        with patch.dict(os.environ, {"GITHUB_TOKEN": "token", "GITHUB_REPOSITORY": "o/r"}), \
+             patch.object(report, "pr_number", return_value=3), \
+             patch.object(report, "_safe_suggestion", return_value=native), \
+             patch.object(report, "gh", return_value={}) as gh:
+            self.assertEqual(report.post_suggestions(data), 1)
+        comment = gh.call_args.args[3]["comments"][0]
+        self.assertEqual(comment["start_line"], 39)
+        self.assertEqual(comment["start_side"], "RIGHT")
+        self.assertEqual(comment["line"], 40)
+        self.assertEqual(comment["side"], "RIGHT")
+
+    def test_pylint_e0001_can_suggest_adjacent_previous_changed_line(self):
+        with open(os.path.join(self.temp.name, "app.py"), "w", encoding="utf-8") as fh:
+            source_lines = [f"# line {number}" for number in range(1, 42)]
+            source_lines[38] = "    y = 20"
+            source_lines[39] = "    return x + y"
+            fh.write("\n".join(source_lines) + "\n")
+        finding = {"tool": "pylint", "rule_id": "E0001", "file": "app.py", "line": 40}
+        self.assertTrue(scan.finding_on_changed_context(finding, {"app.py": {39}}))
+        item = {
+            "source": "linter", "is_real_issue": True,
+            "finding": {
+                **finding,
+                "location": {
+                    "path": "app.py", "line": 40, "changed": False,
+                    "current_source": source_lines[39],
+                    "source_context": {"start_line": 39,
+                                       "lines": [source_lines[38], source_lines[39], source_lines[40]]},
+                    "changed_lines_nearby": [39],
+                },
+            },
+            "ai": {
+                "suggested_fix": "    y = 20",
+                "fix": {"file": "app.py", "start_line": 39, "end_line": 39,
+                        "replacement": "    y = 20", "explanation": "Correct the preceding indentation."},
+            },
+        }
+        suggestion = report._safe_suggestion(item, self.temp.name)
+        self.assertEqual(suggestion[:3], ("app.py", 39, 39))
+        self.assertIn("Correct the preceding indentation.", suggestion[3])
+
+    def test_range_rejects_unrelated_file_lines_and_unbounded_span(self):
+        item = self.item()
+        item["ai"]["fix"].update({"start_line": 1, "end_line": 5})
+        self.assertIsNone(report._safe_suggestion(item, self.temp.name))
+
+    def test_ai_schema_preserves_explicit_range_file_and_explanation(self):
+        result = ai_review._validate({
+            "is_real_issue": True, "severity": "high", "confidence": "high",
+            "reason": "syntax error", "impact": "module cannot load",
+            "suggested_fix": "", "fix": {
+                "file": "app.py", "start_line": 39, "end_line": 40,
+                "replacement": "    y = 20\n    return x + y",
+                "explanation": "Repair the previous statement indentation.",
+            },
+        })
+        self.assertEqual(result["fix"]["file"], "app.py")
+        self.assertEqual(result["fix"]["start_line"], 39)
+        self.assertEqual(result["fix"]["end_line"], 40)
+        self.assertEqual(result["suggested_fix"], result["fix"]["replacement"])
 
 
 if __name__ == "__main__":
