@@ -48,7 +48,6 @@ jobs:
 
       # Metadata lives on its own branch.
       - name: Fetch metadata
-        if: steps.route.outputs.mode != 'verify'
         env:
           META_BRANCH: inno-metadata
         run: |
@@ -209,7 +208,9 @@ jobs:
           fi
 
       - name: Compare findings and report verification
+        id: verify
         if: steps.route.outputs.mode == 'verify'
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -222,6 +223,90 @@ jobs:
             --state "${RUNNER_TEMP}/previous_inno_state.json" \
             --findings "${RUNNER_TEMP}/findings.json" \
             "${ESLINT_ARGS[@]}"
+
+      # If post-fix verification still finds blockers, run the review pipeline
+      # again against the current PR head to generate fresh fix suggestions.
+      - name: Install Copilot CLI for retry
+        if: ${{ steps.route.outputs.mode == 'verify' && steps.verify.outcome == 'failure' && (vars.INNO_LLM_BACKEND || 'cmd') == 'cmd' }}
+        run: npm install -g @github/copilot
+
+      - name: Check Copilot authentication for retry
+        if: ${{ steps.route.outputs.mode == 'verify' && steps.verify.outcome == 'failure' && (vars.INNO_LLM_BACKEND || 'cmd') == 'cmd' }}
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+        run: copilot -p "Respond with OK" --silent
+
+      - name: Build retry LLM context
+        if: steps.route.outputs.mode == 'verify' && steps.verify.outcome == 'failure'
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/context.py" \
+            --findings "${RUNNER_TEMP}/findings.json" \
+            --metadata "metadata" \
+            --out "${RUNNER_TEMP}/retry-payloads.json"
+
+      - name: Retry AI review for remaining findings
+        if: steps.route.outputs.mode == 'verify' && steps.verify.outcome == 'failure'
+        env:
+          INNO_LLM_BACKEND:     ${{ vars.INNO_LLM_BACKEND || 'cmd' }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
+          INNO_LLM_CMD:         "copilot -p"
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/ai_review.py" \
+            --payloads "${RUNNER_TEMP}/retry-payloads.json" \
+            --workers 6 \
+            --out "${RUNNER_TEMP}/retry-review.json"
+
+      - name: Rebuild semantic review context
+        if: steps.route.outputs.mode == 'verify' && steps.verify.outcome == 'failure'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/semantic_context.py" \
+            --repo . \
+            --base "origin/${BASE_REF}" \
+            --head HEAD \
+            --metadata metadata \
+            --out "${RUNNER_TEMP}/retry-semantic-payloads.json"
+
+      - name: Retry semantic AI review
+        if: steps.route.outputs.mode == 'verify' && steps.verify.outcome == 'failure'
+        env:
+          INNO_LLM_BACKEND:     ${{ vars.INNO_LLM_BACKEND || 'cmd' }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
+          OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
+          INNO_LLM_CMD:         "copilot -p"
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/semantic_review.py" \
+            --payloads "${RUNNER_TEMP}/retry-semantic-payloads.json" \
+            --workers 6 \
+            --out "${RUNNER_TEMP}/retry-semantic-findings.json"
+
+      - name: Merge retry findings
+        if: steps.route.outputs.mode == 'verify' && steps.verify.outcome == 'failure'
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/merge.py" \
+            --review "${RUNNER_TEMP}/retry-review.json" \
+            --semantic "${RUNNER_TEMP}/retry-semantic-findings.json" \
+            --max 15 \
+            --out "${RUNNER_TEMP}/retry-combined-review.json"
+
+      - name: Post fresh suggested fixes
+        if: steps.route.outputs.mode == 'verify' && steps.verify.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/report.py" \
+            --review "${RUNNER_TEMP}/retry-combined-review.json" \
+            --fail-on high
+
+      - name: Keep failed verification status
+        if: always() && steps.route.outputs.mode == 'verify' && steps.verify.outcome == 'failure'
+        run: |
+          echo "Post-fix checkup failed. Inno reran review and posted fresh suggestions; address remaining findings and push another commit."
+          exit 1
 
       # -----------------------------------------------------------------------
       # ARTIFACTS
