@@ -38,6 +38,7 @@ Falls back to job summary only if PR token cannot write.
 Exits 1 when merge-blocking findings are found.
 """
 import argparse
+import base64
 import json
 import os
 import sys
@@ -287,7 +288,7 @@ def pr_number():
     return None
 
 
-def post_comment(markdown):
+def post_comment(markdown, state=None):
     token = os.environ.get("GITHUB_TOKEN")
     repo  = os.environ.get("GITHUB_REPOSITORY")
     num   = pr_number()
@@ -295,6 +296,11 @@ def post_comment(markdown):
         print("[info] not in a PR context; skipping comment")
         return False
     base = f"https://api.github.com/repos/{repo}/issues"
+    if state is not None:
+        encoded = base64.urlsafe_b64encode(
+            json.dumps(state, separators=(",", ":")).encode("utf-8")
+        ).decode("ascii")
+        markdown += f"\n\n<!-- inno-review-state:{encoded} -->"
     try:
         existing = gh("GET", f"{base}/{num}/comments?per_page=100", token) or []
         mine = next((c for c in existing if MARKER in (c.get("body") or "")), None)
@@ -402,7 +408,14 @@ def main():
     if args.print:
         print(markdown)
 
-    post_comment(markdown)
+    state = {
+        "version": 1,
+        "initial_head": data.get("head") or os.environ.get("GITHUB_SHA"),
+        "initial_results": data.get("results", []) + data.get("overflow", []),
+        "threshold": args.fail_on,
+        "accepted_suggestions": [],
+    }
+    post_comment(markdown, state=state)
     print(f"Posted {post_suggestions(data)} native suggestion(s)")
 
     block = blocking_items(data["results"], args.fail_on)
