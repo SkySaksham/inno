@@ -118,6 +118,9 @@ def review_one(p):
 
     Returns (ai_result | None, prompt_chars, error_str | None).
     Thread-safe.
+
+    Raises llm.AuthenticationError directly — the caller must handle it
+    and stop the entire batch instead of retrying.
     """
     prompt   = build_prompt(p)
     last_err = None
@@ -130,7 +133,11 @@ def review_one(p):
         try:
             raw = llm.call_llm(prompt + retry_sfx, context_hint="is_real_issue")
             return _validate(_extract_json(raw)), len(prompt), None
+        except llm.AuthenticationError:
+            raise   # never retry auth failures
         except (ValueError, RuntimeError, json.JSONDecodeError) as exc:
+            if llm.is_auth_error(exc):
+                raise llm.AuthenticationError(str(exc)) from exc
             last_err = str(exc)
 
     return None, len(prompt), last_err
@@ -170,6 +177,16 @@ def main():
         print(f"Wrote prompts.txt ({len(payloads)} prompts)")
         return
 
+    # Run preflight check once before starting workers
+    try:
+        llm.preflight_check()
+    except llm.AuthenticationError as exc:
+        print(f"\n[FATAL] LLM authentication preflight failed: {exc}\n"
+              "Aborting review immediately to prevent repeated errors.", file=sys.stderr)
+        sys.exit(1)
+    except Exception as exc:
+        print(f"[warn] LLM preflight warning: {exc}", file=sys.stderr)
+
     # ---- Concurrent LLM calls ---------------------------------------------
     idx_map = {p["id"]: i for i, p in enumerate(payloads)}
     results = [None] * len(payloads)
@@ -178,17 +195,18 @@ def main():
         futures = {pool.submit(review_one, p): p for p in payloads}
         done = 0
         for fut in as_completed(futures):
-            p              = futures[fut]
-            ai, chars, err = fut.result()
+            p = futures[fut]
+            try:
+                ai, chars, err = fut.result()
+            except llm.AuthenticationError as exc:
+                print(f"\n[FATAL] Authentication failure during review of {p['id']}: {exc}\n"
+                      "Aborting remaining reviews.", file=sys.stderr)
+                pool.shutdown(wait=False, cancel_futures=True)
+                sys.exit(1)
+
             done += 1
             status = "✓" if not err else f"✗ {err[:60]}"
             print(f"  [{done}/{len(payloads)}] {p['id']}: {status}", flush=True)
-            if err:
-                print(
-                    f"[warn] {p['id']}: AI review failed ({err}); "
-                    "falling back to analyzer severity",
-                    file=sys.stderr,
-                )
             results[idx_map[p["id"]]] = {
                 "id":             p["id"],
                 "finding":        p["finding"],

@@ -178,6 +178,8 @@ def review_one(payload):
 
     Returns (findings: list, prompt_chars: int, error: str|None).
     Thread-safe — llm.call_llm() is stateless.
+
+    Raises llm.AuthenticationError directly — caller will abort batch.
     """
     prompt   = build_prompt(payload)
     last_err = None
@@ -199,7 +201,11 @@ def review_one(payload):
                 if (vf := _validate_finding(f)) is not None
             ]
             return findings, len(prompt), None
+        except llm.AuthenticationError:
+            raise   # do not retry auth failures
         except (ValueError, RuntimeError, json.JSONDecodeError) as exc:
+            if llm.is_auth_error(exc):
+                raise llm.AuthenticationError(str(exc)) from exc
             last_err = str(exc)
 
     return [], len(prompt), last_err
@@ -242,6 +248,16 @@ def main():
         print(f"Wrote semantic_prompts.txt ({len(payloads)} prompts)")
         return
 
+    # Run preflight check once before starting workers
+    try:
+        llm.preflight_check()
+    except llm.AuthenticationError as exc:
+        print(f"\n[FATAL] LLM authentication preflight failed: {exc}\n"
+              "Aborting semantic review immediately to prevent repeated errors.", file=sys.stderr)
+        sys.exit(1)
+    except Exception as exc:
+        print(f"[warn] LLM preflight warning: {exc}", file=sys.stderr)
+
     # ---- Concurrent LLM calls ---------------------------------------------
     # Build a lookup so we can re-assemble results in original order.
     idx_map  = {p["id"]: i for i, p in enumerate(payloads)}
@@ -251,17 +267,19 @@ def main():
         futures = {pool.submit(review_one, p): p for p in payloads}
         done = 0
         for fut in as_completed(futures):
-            p               = futures[fut]
-            findings, chars, err = fut.result()
+            p = futures[fut]
+            try:
+                findings, chars, err = fut.result()
+            except llm.AuthenticationError as exc:
+                print(f"\n[FATAL] Authentication failure during semantic review of {p['id']}: {exc}\n"
+                      "Aborting remaining reviews.", file=sys.stderr)
+                pool.shutdown(wait=False, cancel_futures=True)
+                sys.exit(1)
+
             done += 1
             status = f"✓ {len(findings)} finding(s)" if not err else f"✗ {err[:80]}"
             print(f"  [{done}/{len(payloads)}] {p['id']} ({p['func_name']}): {status}",
                   flush=True)
-            if err:
-                print(
-                    f"[warn] {p['id']} ({p['func_name']}): semantic review failed ({err})",
-                    file=sys.stderr,
-                )
             results[idx_map[p["id"]]] = {
                 "id":           p["id"],
                 "func_name":    p["func_name"],

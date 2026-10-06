@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  id-token: write
 
 jobs:
   inno-review:            # <- this is the name you select as the required status check
@@ -66,18 +67,27 @@ jobs:
       - name: Install Copilot CLI
         run: npm install -g @github/copilot
 
-      # Auth: confirm in GitHub's Copilot CLI docs which token/env var is supported,
-      # and store it as a repo secret. The name below is a placeholder.
+      - name: Copilot authentication smoke test
+        if: ${{ (vars.INNO_LLM_BACKEND || 'cmd') == 'cmd' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          echo "Verifying Copilot CLI authentication with GITHUB_TOKEN..."
+          copilot -p "Respond with OK" --silent || {
+            echo "::error::GitHub Copilot CLI authentication failed with GITHUB_TOKEN. Ensure Copilot access is enabled for this repository or set an appropriate token."
+            exit 1
+          }
+
       - name: AI review (linter findings)
         env:
-          # Pick ONE backend — set the repo variable + matching secret.
-          # openai  -> set INNO_LLM_BACKEND=openai + OPENAI_API_KEY secret
-          # gemini  -> set INNO_LLM_BACKEND=gemini + GEMINI_API_KEY secret
-          # cmd     -> set INNO_LLM_BACKEND=cmd    + COPILOT_TOKEN secret
           INNO_LLM_BACKEND:     ${{ vars.INNO_LLM_BACKEND || 'cmd' }}
+          GITHUB_TOKEN:         ${{ github.token }}
+          GH_TOKEN:             ${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
           OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
           INNO_LLM_CMD:         "copilot -p"
         run: |
           python "${RUNNER_TEMP}/inno-tool/ai_review.py" \
@@ -102,9 +112,11 @@ jobs:
       - name: Semantic AI review (diff-driven findings)
         env:
           INNO_LLM_BACKEND:     ${{ vars.INNO_LLM_BACKEND || 'cmd' }}
+          GITHUB_TOKEN:         ${{ github.token }}
+          GH_TOKEN:             ${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
           OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
-          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN }}
           INNO_LLM_CMD:         "copilot -p"
         run: |
           python "${RUNNER_TEMP}/inno-tool/semantic_review.py" \
