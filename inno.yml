@@ -1,7 +1,7 @@
 name: Inno - Self-Updating Repo Metadata
 
-# Drop this single file into .github/workflows/ of any repo.
-# Inno fetches init.py + extract_metadata.py at runtime.
+# Runs after every push to main.
+# Only changed Python files are sent to the metadata pipeline.
 
 on:
   push:
@@ -26,29 +26,72 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. Fetch Inno's scripts
+      # 2. Fetch Inno OUTSIDE the repository
+      #    This prevents Inno's own .py files from being indexed.
       - name: Fetch Inno tool scripts
-        uses: actions/checkout@v4
-        with:
-          repository: SkySaksham/inno
-          ref: main
-          path: .inno-tool
+        run: |
+          git clone \
+            --depth 1 \
+            --branch main \
+            "https://x-access-token:${{ github.token }}@github.com/SkySaksham/inno.git" \
+            "${RUNNER_TEMP}/inno-tool"
 
-      # 3. Python for init.py + extract_metadata.py
+      # 3. Find changed Python files
+      - name: Find changed Python files
+        id: changed
+        shell: bash
+        run: |
+          BASE_SHA="${{ github.event.before }}"
+          HEAD_SHA="${{ github.sha }}"
+
+          # Handle the first push to a branch.
+          if [[ "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            BASE_SHA="$(git rev-list --max-parents=0 "$HEAD_SHA")"
+          fi
+
+          git diff \
+            --name-only \
+            "$BASE_SHA" \
+            "$HEAD_SHA" \
+            -- '*.py' \
+            > "${RUNNER_TEMP}/changed-python-files.txt"
+
+          echo "Changed Python files:"
+          cat "${RUNNER_TEMP}/changed-python-files.txt" || true
+
+          if [[ -s "${RUNNER_TEMP}/changed-python-files.txt" ]]; then
+            echo "has_python_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_python_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 4. Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 4. Install GitHub Copilot CLI
+      # 5. Install Copilot CLI
       - name: Install Copilot CLI
+        if: steps.changed.outputs.has_python_changes == 'true'
         run: npm install -g @github/copilot
 
-      # 5. Run the existing Inno pipeline
+      # 6. Run incremental metadata pipeline
       - name: Run metadata pipeline
+        if: steps.changed.outputs.has_python_changes == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          python .inno-tool/init.py \
+          mapfile -t CHANGED_FILES < "${RUNNER_TEMP}/changed-python-files.txt"
+
+          python "${RUNNER_TEMP}/inno-tool/init.py" \
             --repo . \
-            --script .inno-tool/extract_metadata.py
+            --script "${RUNNER_TEMP}/inno-tool/extract_metadata.py" \
+            --only "${CHANGED_FILES[@]}"
+
+      # 7. Nothing to do when no Python files changed
+      - name: Skip metadata update
+        if: steps.changed.outputs.has_python_changes != 'true'
+        run: |
+          echo "No Python files changed. Skipping metadata update."
