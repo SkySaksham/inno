@@ -18,9 +18,6 @@ frontend_origin = os.environ.get("FRONTEND_ORIGIN", "").rstrip("/")
 
 if not supabase_url or not supabase_key:
     raise RuntimeError("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.")
-if not api_token:
-    raise RuntimeError("Set METRICS_API_TOKEN.")
-
 supabase: Client = create_client(supabase_url, supabase_key)
 
 
@@ -34,6 +31,9 @@ def add_frontend_cors(response):
 
 
 def authorized():
+    # Token checks are opt-in for now; setting METRICS_API_TOKEN enables them.
+    if not api_token:
+        return True
     header = request.headers.get("Authorization", "")
     scheme, _, supplied = header.partition(" ")
     return scheme.lower() == "bearer" and hmac.compare_digest(supplied, api_token)

@@ -11,7 +11,17 @@ cd metrics-backend
 python -m pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env` and set the Supabase project URL, service-role key, and a long random `METRICS_API_TOKEN`. Keep both secrets on the server. Start the API with:
+Copy `.env.example` to `.env` and add only your Supabase project URL and service-role key. Keep the service-role key on the server; never put it in the frontend. `METRICS_API_TOKEN` is optional: when unset, API endpoints work without a bearer token; set it as a server/deployment secret to enable token checks. Set `FRONTEND_ORIGIN` in the deployment environment to your frontend's exact origin so its browser can read the public aggregate endpoint.
+
+For a local PowerShell run, set the frontend origin in the terminal. Add an API token only if you want token checks enabled:
+
+```powershell
+$env:FRONTEND_ORIGIN = "http://localhost:5173"
+# Optional:
+# $env:METRICS_API_TOKEN = "your-long-random-token"
+```
+
+Then start the API:
 
 ```bash
 python app.py
@@ -19,7 +29,7 @@ python app.py
 
 ## Endpoints
 
-All metrics endpoints require `Authorization: Bearer <METRICS_API_TOKEN>`.
+When `METRICS_API_TOKEN` is set, metrics endpoints require `Authorization: Bearer <METRICS_API_TOKEN>`. When it is unset, they accept requests without a token.
 
 ### `POST /metrics`
 

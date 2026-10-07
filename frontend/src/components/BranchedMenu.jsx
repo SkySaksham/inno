@@ -1,4 +1,4 @@
-import { isValidElement, useLayoutEffect, useRef, useState } from 'react';
+import React, { isValidElement, useLayoutEffect, useRef, useState } from 'react';
 import { HugeiconsIcon } from '@hugeicons/react';
 import {
   CursorPointer01Icon,
@@ -19,12 +19,6 @@ export const REVIEW_SECTIONS = [
       { value: 'suggestions', label: 'Suggested fixes', icon: CursorPointer01Icon },
     ],
   },
-  {
-    label: 'Reliability',
-    children: [
-      { value: 'metrics', label: 'All-time metrics', icon: Layers01Icon },
-    ],
-  },
 ];
 
 const renderIcon = icon => (isValidElement(icon)
@@ -34,7 +28,7 @@ const toSet = open => new Set(Array.isArray(open) ? open : open >= 0 ? [open] : 
 
 export default function BranchedMenu({
   items = REVIEW_SECTIONS,
-  defaultOpen = [0, 1],
+  defaultOpen = [0],
   defaultActive = 'static',
   onSelect,
   onToggle,
