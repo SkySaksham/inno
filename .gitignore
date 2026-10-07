@@ -23,6 +23,13 @@ ENV/
 .env.local
 *.key
 
+# Frontend dependencies and generated output
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+.vercel/
+.netlify/
+
 # Linter / tool output
 .pylint.d/
 .eslintcache

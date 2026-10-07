@@ -51,3 +51,7 @@ python report.py --review combined_review.json --fail-on high --print
 `report.py` prints the review locally. It posts a comment and native suggestions when run in a GitHub pull request with the required token and repository environment variables. `--fail-on` accepts `critical`, `high`, `medium`, or `low`.
 
 To update metadata locally, run `init.py --repo . --script extract_metadata.py`. It uses the repository's configured Git remote and pushes the generated metadata branch, so only run it when you intend to publish that update.
+
+## Metrics dashboard
+
+The React landing page and all-time reliability dashboard are in [`frontend/`](frontend/README.md). It uses the BranchedMenu component to switch between Inno's review approach and reliability metrics, without a top navbar. Its Flask/Supabase API is in [`metrics-backend/`](metrics-backend/README.md).
