@@ -1,57 +1,29 @@
 # Inno
 
-Inno reviews pull requests for Python issues using Pylint, Bandit, and an LLM. It posts a review summary, adds GitHub one-click suggestions when a safe fix maps to changed lines, and can block merges for high or critical findings.
+Inno reviews Python pull requests with Pylint, Bandit, and GitHub Copilot CLI. It adds semantic checks for logic and caller-contract issues, posts evidence and one-click fixes where possible, and blocks merges on high or critical findings. Review metrics are sent to the Inno dashboard backend.
 
-## GitHub Actions setup
+## Add Inno to a repository
 
-Copy `pr-review.yml` and `inno.yml` into `.github/workflows/` in the repository you want Inno to review. The PR workflow currently targets `main`; edit its `pull_request.branches` setting to change that.
+Copy these template files into `.github/workflows/` in the repository you want reviewed:
 
-Configure repository settings:
-
-- Allow GitHub Actions to write pull request comments (`pull-requests: write` is requested by the workflow).
-- Set the `INNO_LLM_BACKEND` Actions variable to `cmd`, `openai`, or `gemini` (defaults to `cmd`).
-- For `cmd`, add a `COPILOT_TOKEN` secret with Copilot CLI access. For `openai` or `gemini`, add `OPENAI_API_KEY` or `GEMINI_API_KEY` instead.
-
-### Workflows
-
-| Workflow | Trigger | What it does |
-| --- | --- | --- |
-| `pr-review.yml` | Pull requests targeting `main` | Scans changed Python code with Pylint and Bandit; runs AI and semantic reviews; merges and posts findings and applicable one-click suggestions. High and critical blocking findings fail the job. On subsequent PR updates, it verifies which findings were fixed. If verification fails, it reruns AI and semantic review on the current PR head and posts fresh suggestions; the check remains failed until blockers are fixed. Results are uploaded as the `inno-results` artifact. |
-| `inno.yml` | Pushes to `main` | Updates Python code metadata on a separate branch. It processes changed Python files incrementally, or builds metadata for the whole repository if its metadata branch does not exist. |
-
-The workflow files currently use different metadata branch names: `inno.yml` writes to `metadata-branch`, while `pr-review.yml` reads from `inno-metadata`. Set them to the same name if you want PR reviews to use the generated metadata; without metadata, review continues with AST-only context.
-
-## Local use
-
-Use Python 3.11 or newer. Install the static analyzers:
-
-```bash
-python -m pip install pylint bandit
+```text
+Inno source                  Target repository
+workflows/pr-review.yml  ->  .github/workflows/pr-review.yml
+workflows/inno.yml       ->  .github/workflows/inno.yml
 ```
 
-Choose an LLM backend by setting `INNO_LLM_BACKEND` and its credential. For example, with Copilot CLI installed and authenticated:
+`pr-review.yml` runs on pull requests targeting `main`. `inno.yml` is optional; it maintains the `metadata-branch` used to add repository context to reviews. Without it, Inno still runs with AST-only context. Change the workflow branch filters if your default branch is not `main`.
 
-```bash
-export INNO_LLM_BACKEND=cmd
-export INNO_LLM_CMD="copilot -p"
-```
+## Connect GitHub Copilot
 
-Run the PR-review pipeline from the repository being reviewed (replace `origin/main` if needed):
+1. Create a fine-grained personal access token with the **Copilot Requests** permission enabled.
+2. In the target repository, open **Settings → Secrets and variables → Actions → New repository secret**. Name it `COPILOT_TOKEN` and paste the token.
+3. Set the Actions variable `INNO_LLM_BACKEND` to `cmd`, or leave it unset (`cmd` is the default).
 
-```bash
-python scan.py --base origin/main --head HEAD --out findings.json
-python context.py --findings findings.json --metadata metadata --out payloads.json
-python ai_review.py --payloads payloads.json --out review.json
-python semantic_context.py --repo . --base origin/main --head HEAD --metadata metadata --out semantic_payloads.json
-python semantic_review.py --payloads semantic_payloads.json --out semantic_findings.json
-python merge.py --review review.json --semantic semantic_findings.json --out combined_review.json
-python report.py --review combined_review.json --fail-on high --print
-```
+The workflow installs Copilot CLI and uses the secret for its AI reviews. Keep the token in Actions secrets; do not put it in workflow files. GitHub documents this token permission and Actions setup in [Copilot CLI authentication](https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/automate-with-actions).
 
-`report.py` prints the review locally. It posts a comment and native suggestions when run in a GitHub pull request with the required token and repository environment variables. `--fail-on` accepts `critical`, `high`, `medium`, or `low`.
+In **Settings → Actions → General**, allow workflows to write repository contents and pull-request comments so the metadata and review workflows can update their results.
 
-To update metadata locally, run `init.py --repo . --script extract_metadata.py`. It uses the repository's configured Git remote and pushes the generated metadata branch, so only run it when you intend to publish that update.
+## Metrics
 
-## Metrics dashboard
-
-The React landing page and all-time reliability dashboard are in [`frontend/`](frontend/README.md). It uses the BranchedMenu component to switch between Inno's review approach and reliability metrics, without a top navbar. Its Flask/Supabase API is in [`metrics-backend/`](metrics-backend/README.md); the PR workflow sends review and post-fix metrics to this API.
+The PR workflow sends finding, false-positive, and fix-acceptance counts to the hosted metrics backend. The frontend dashboard is in [`frontend/`](frontend/README.md); backend setup is in [`metrics-backend/`](metrics-backend/README.md).

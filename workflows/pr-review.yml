@@ -51,7 +51,7 @@ jobs:
       # Metadata lives on its own branch.
       - name: Fetch metadata
         env:
-          META_BRANCH: inno-metadata
+          META_BRANCH: metadata-branch
         run: |
           if git fetch --depth 1 origin "${META_BRANCH}" 2>/dev/null; then
             git checkout FETCH_HEAD -- metadata/ 2>/dev/null \
