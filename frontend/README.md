@@ -10,6 +10,6 @@ npm install
 npm run dev
 ```
 
-Start the metrics API from `../metrics-backend/README.md`. Set `METRICS_API_URL` near the top of `src/App.jsx` to its `/metrics/summary` endpoint, and set the backend's `FRONTEND_ORIGIN` to the exact frontend origin shown by Vite (usually `http://localhost:5173`).
+Start the metrics API from `../metrics-backend/README.md`. `src/App.jsx` reads the hosted `/metrics/summary` endpoint by default. For local development or another deployment, set `METRICS_API_URL` there to the API's `/metrics/summary` endpoint, and set the backend's `FRONTEND_ORIGIN` to the exact frontend origin shown by Vite (usually `http://localhost:5173`).
 
 The dashboard reads public aggregate metrics only. Supabase credentials and the metrics write token stay in the backend.

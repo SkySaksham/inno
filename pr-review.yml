@@ -16,6 +16,8 @@ permissions:
 jobs:
   inno-review:
     runs-on: ubuntu-latest
+    env:
+      INNO_METRICS_API_URL: https://inno-mv5y.onrender.com
 
     steps:
       - name: Checkout PR
@@ -179,6 +181,12 @@ jobs:
             --review  "${RUNNER_TEMP}/combined_review.json" \
             --fail-on high
 
+      - name: Publish initial review metrics
+        if: always() && steps.route.outputs.mode != 'verify'
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/metrics-backend/publish_metrics.py" \
+            --review "${RUNNER_TEMP}/combined_review.json"
+
       - name: Set up Node for configured ESLint
         if: steps.route.outputs.mode == 'verify' && steps.route.outputs.eslint == 'true'
         uses: actions/setup-node@v4
@@ -222,7 +230,14 @@ jobs:
           python "${RUNNER_TEMP}/inno-tool/verify.py" verify \
             --state "${RUNNER_TEMP}/previous_inno_state.json" \
             --findings "${RUNNER_TEMP}/findings.json" \
+            --metrics-out "${RUNNER_TEMP}/verification-metrics.json" \
             "${ESLINT_ARGS[@]}"
+
+      - name: Publish post-fix verification metrics
+        if: always() && steps.route.outputs.mode == 'verify'
+        run: |
+          python "${RUNNER_TEMP}/inno-tool/metrics-backend/publish_metrics.py" \
+            --counts "${RUNNER_TEMP}/verification-metrics.json"
 
       # If post-fix verification still finds blockers, run the review pipeline
       # again against the current PR head to generate fresh fix suggestions.
@@ -324,5 +339,6 @@ jobs:
             ${{ runner.temp }}/semantic_findings.json
             ${{ runner.temp }}/combined_review.json
             ${{ runner.temp }}/previous_inno_state.json
+            ${{ runner.temp }}/verification-metrics.json
             ${{ runner.temp }}/eslint-results.json
             ${{ runner.temp }}/eslint-exit-code.txt

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="1000" gradientUnits="userSpaceOnUse"><stop stop-color="#101813"/><stop offset=".52" stop-color="#17241a"/><stop offset="1" stop-color="#070a08"/></linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="matrix(0 550 -770 0 850 470)" gradientUnits="userSpaceOnUse"><stop stop-color="#91c66f" stop-opacity=".38"/><stop offset="1" stop-color="#142018" stop-opacity="0"/></radialGradient>
+    <linearGradient id="line" x1="280" y1="190" x2="1290" y2="810" gradientUnits="userSpaceOnUse"><stop stop-color="#c9f36a" stop-opacity=".04"/><stop offset=".5" stop-color="#a9d986" stop-opacity=".72"/><stop offset="1" stop-color="#77b878" stop-opacity=".08"/></linearGradient>
+    <pattern id="grid" width="54" height="54" patternUnits="userSpaceOnUse"><path d="M54 0H0V54" stroke="#bbd7a8" stroke-opacity=".08"/></pattern>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+  </defs>
+  <path fill="url(#bg)" d="M0 0h1600v1000H0z"/><path fill="url(#glow)" d="M0 0h1600v1000H0z"/><path fill="url(#grid)" d="M0 0h1600v1000H0z"/>
+  <g stroke="url(#line)" stroke-width="2">
+    <path d="M216 252 475 380l230-142 234 164 292-134 205 157"/><path d="m216 746 259-145 230 144 234-178 292 159 205-142"/>
+    <path d="m475 380 0 221m230-363v507m234-343v199m292-333v477m205-320v178"/>
+    <path d="m216 252 43 494m259-366 0 221m464-420 0 542m526-385 0 320" stroke-opacity=".4"/>
+  </g>
+  <g fill="#c9f36a" filter="url(#blur)" opacity=".6"><circle cx="475" cy="380" r="22"/><circle cx="705" cy="238" r="18"/><circle cx="939" cy="402" r="20"/><circle cx="1231" cy="268" r="18"/><circle cx="705" cy="745" r="19"/><circle cx="939" cy="567" r="18"/></g>
+  <g fill="#c9f36a" stroke="#e7ffc0" stroke-width="2"><circle cx="475" cy="380" r="8"/><circle cx="705" cy="238" r="7"/><circle cx="939" cy="402" r="8"/><circle cx="1231" cy="268" r="7"/><circle cx="705" cy="745" r="7"/><circle cx="939" cy="567" r="7"/></g>
+  <g fill="#e7efdf" fill-opacity=".75"><circle cx="216" cy="252" r="5"/><circle cx="216" cy="746" r="5"/><circle cx="475" cy="601" r="5"/><circle cx="939" cy="601" r="5"/><circle cx="1231" cy="586" r="5"/><circle cx="1436" cy="425" r="5"/><circle cx="1436" cy="604" r="5"/></g>
+</svg>

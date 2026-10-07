@@ -54,4 +54,4 @@ To update metadata locally, run `init.py --repo . --script extract_metadata.py`.
 
 ## Metrics dashboard
 
-The React landing page and all-time reliability dashboard are in [`frontend/`](frontend/README.md). It uses the BranchedMenu component to switch between Inno's review approach and reliability metrics, without a top navbar. Its Flask/Supabase API is in [`metrics-backend/`](metrics-backend/README.md).
+The React landing page and all-time reliability dashboard are in [`frontend/`](frontend/README.md). It uses the BranchedMenu component to switch between Inno's review approach and reliability metrics, without a top navbar. Its Flask/Supabase API is in [`metrics-backend/`](metrics-backend/README.md); the PR workflow sends review and post-fix metrics to this API.

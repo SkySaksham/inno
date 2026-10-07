@@ -117,9 +117,11 @@ def current_findings(path, eslint_path=None):
 def suggestion_was_added(state, result, head):
     finding = result.get("finding") or {}
     ai = result.get("ai") or {}
+    semantic = result.get("semantic") or {}
     location = finding.get("location") or {}
-    suggestion = ai.get("suggested_fix", "")
-    path = finding.get("file") or location.get("path")
+    suggestion = ai.get("suggested_fix") or semantic.get("suggested_fix", "")
+    path = (finding.get("file") or location.get("path") or result.get("file")
+            or (result.get("semantic_location") or {}).get("file"))
     initial_head = state.get("initial_head")
     if not (suggestion and path and initial_head and head):
         return False
@@ -173,6 +175,11 @@ def make_verification(state, findings, head, eslint_exit=0):
                     and (item.get("ai") or {}).get("suggested_fix")
                     and suggestion_was_added(state, item, head)):
                 accepted_ids.add(str(item.get("id") or key))
+
+    for item in semantic_only:
+        if (item.get("semantic", {}).get("suggested_fix")
+                and suggestion_was_added(state, item, head)):
+            accepted_ids.add(str(item.get("id") or identity(item)))
 
     new_findings = []
     new_counts = available.copy()
@@ -305,6 +312,15 @@ def verify(args):
         except (OSError, ValueError):
             eslint_exit = 2
     markdown, next_state, passed = make_verification(state, findings, head, eslint_exit)
+    if args.metrics_out:
+        metrics = next_state.get("metrics", {})
+        with open(args.metrics_out, "w", encoding="utf-8") as fh:
+            json.dump({
+                "total_findings": metrics.get("before", 0),
+                "false_positives": metrics.get("false_positives", 0),
+                "fixes_suggested": metrics.get("suggested", 0),
+                "fixes_accepted": metrics.get("accepted", 0),
+            }, fh, indent=2)
     try:
         if report.pr_number():
             report.ensure_current_pr_head(head)
@@ -342,6 +358,7 @@ def main():
     verify_parser.add_argument("--findings", required=True)
     verify_parser.add_argument("--eslint")
     verify_parser.add_argument("--eslint-exit")
+    verify_parser.add_argument("--metrics-out")
     args = parser.parse_args()
     if args.command == "detect":
         detect(args)

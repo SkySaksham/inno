@@ -39,6 +39,7 @@ const FoldText = ({
   perspective = 700,
   creaseShading = 0.55,
   trigger = 'mount',
+  onComplete,
   fontSize = 80,
   fontWeight = 800,
   color = '#f7f2e8',
@@ -137,6 +138,7 @@ const FoldText = ({
       killTimeline();
       timelineRef.current = gsap.timeline({ repeat: repeat ? -1 : 0, repeatDelay: repeat ? 0.75 : 0 });
       timelineRef.current.fromTo(pieces, fromVars, toVars);
+      if (onComplete && !repeat) timelineRef.current.eventCallback('onComplete', onComplete);
       return timelineRef.current;
     };
 
@@ -176,6 +178,7 @@ const FoldText = ({
     perspective,
     safeCrease,
     trigger,
+    onComplete,
     hingeConfig.origin,
     hingeConfig.rotateX,
     hingeConfig.rotateY

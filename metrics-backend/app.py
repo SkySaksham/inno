@@ -48,7 +48,16 @@ def nonnegative_int(data, key):
 
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok"})
+    return health_response()
+
+
+@app.get("/")
+def root_health():
+    return health_response()
+
+
+def health_response():
+    return jsonify({"status": "ok", "service": "inno-metrics-api"})
 
 
 @app.post("/metrics")
